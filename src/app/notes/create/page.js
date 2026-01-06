@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 export default function CreateNote() {
   const router = useRouter();
   const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
   const contentRef = useRef(null);
 
   const [formData, setFormData] = useState({
@@ -25,6 +26,7 @@ export default function CreateNote() {
   });
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showHighlightPicker, setShowHighlightPicker] = useState(false);
+  const [showListDropdown, setShowListDropdown] = useState(false);
 
   // Color options for text and highlighting
   const textColors = [
@@ -83,6 +85,60 @@ export default function CreateNote() {
       }
     }
     
+    // Special handling for fontSize to apply to list items and markers
+    if (command === 'fontSize' && contentRef.current) {
+      setTimeout(() => {
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0) {
+          const range = selection.getRangeAt(0);
+          
+          // Get all list items that might be affected
+          const listItems = new Set();
+          
+          // Check if we're in a list item
+          let node = range.commonAncestorContainer;
+          let current = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+          
+          while (current && current !== contentRef.current) {
+            if (current.nodeName === 'LI') {
+              listItems.add(current);
+              break;
+            }
+            current = current.parentElement;
+          }
+          
+          // Also check for selected range
+          const container = range.commonAncestorContainer;
+          if (container.nodeType === Node.ELEMENT_NODE) {
+            const selectedLis = container.querySelectorAll('li');
+            selectedLis.forEach(li => listItems.add(li));
+          }
+          
+          // Apply font-size to li elements
+          listItems.forEach(li => {
+            // Get all font elements inside
+            const fontElements = li.querySelectorAll('font[size], [style*="font-size"]');
+            if (fontElements.length > 0) {
+              // Use the first one's font size
+              const firstElement = fontElements[0];
+              let fontSize = firstElement.style.fontSize;
+              
+              // Handle font size attribute
+              if (!fontSize && firstElement.hasAttribute('size')) {
+                const sizeAttr = firstElement.getAttribute('size');
+                const sizeMap = { '1': '10px', '2': '13px', '3': '16px', '4': '18px', '5': '24px', '6': '32px', '7': '48px' };
+                fontSize = sizeMap[sizeAttr] || '16px';
+              }
+              
+              if (fontSize) {
+                li.style.fontSize = fontSize;
+              }
+            }
+          });
+        }
+      }, 50);
+    }
+    
     updateActiveFormats();
     
     // Update form data with the new content
@@ -104,17 +160,737 @@ export default function CreateNote() {
     });
   };
 
+  const applyListStyle = (listType) => {
+    const currentListType = getCurrentListType();
+    
+    // If clicking None, remove any list
+    if (listType === 'none') {
+      if (currentListType === 'bullet') {
+        formatText('insertUnorderedList'); // Toggle off
+      } else if (currentListType) {
+        formatText('insertOrderedList'); // Toggle off
+      }
+      setShowListDropdown(false);
+      return;
+    }
+    
+    // If clicking same list type, toggle it off
+    if (currentListType === listType) {
+      if (listType === 'bullet') {
+        formatText('insertUnorderedList');
+      } else {
+        formatText('insertOrderedList');
+      }
+      setShowListDropdown(false);
+      return;
+    }
+    
+    // If switching from one list type to another, remove old first
+    if (currentListType && currentListType !== listType) {
+      if (currentListType === 'bullet') {
+        formatText('insertUnorderedList'); // Remove bullet
+      } else {
+        formatText('insertOrderedList'); // Remove ordered
+      }
+    }
+    
+    if (listType === 'bullet') {
+      formatText('insertUnorderedList');
+      // Ensure bullet style
+      setTimeout(() => {
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0) {
+          let node = selection.getRangeAt(0).commonAncestorContainer;
+          let current = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+          while (current && current !== contentRef.current) {
+            if (current.nodeName === 'UL') {
+              current.style.listStyleType = 'disc';
+              break;
+            }
+            current = current.parentElement;
+          }
+        }
+      }, 10);
+    } else if (listType === 'numbered' || listType === 'lower-alpha' || listType === 'upper-alpha') {
+      formatText('insertOrderedList');
+      // Apply the specific list style
+      setTimeout(() => {
+        const selection = window.getSelection();
+        if (selection.rangeCount > 0) {
+          let node = selection.getRangeAt(0).commonAncestorContainer;
+          let current = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+          while (current && current !== contentRef.current) {
+            if (current.nodeName === 'OL') {
+              if (listType === 'numbered') {
+                current.style.listStyleType = 'decimal';
+              } else if (listType === 'lower-alpha') {
+                current.style.listStyleType = 'lower-alpha';
+              } else if (listType === 'upper-alpha') {
+                current.style.listStyleType = 'upper-alpha';
+              }
+              break;
+            }
+            current = current.parentElement;
+          }
+        }
+      }, 10);
+    }
+    setShowListDropdown(false);
+  };
+
+  const getCurrentListType = () => {
+    if (!contentRef.current) return null;
+    
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0) {
+      let node = selection.getRangeAt(0).commonAncestorContainer;
+      let current = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+      
+      while (current && current !== contentRef.current) {
+        if (current.nodeName === 'UL') {
+          return 'bullet';
+        }
+        if (current.nodeName === 'OL') {
+          const listStyle = current.style.listStyleType || 'decimal';
+          if (listStyle === 'lower-alpha') return 'lower-alpha';
+          if (listStyle === 'upper-alpha') return 'upper-alpha';
+          return 'numbered';
+        }
+        current = current.parentElement;
+      }
+    }
+    return null;
+  };
+
+  const handleEditorDoubleClick = (e) => {
+    // Check if double-click is on a numbered list item or marker
+    let target = e.target;
+    let olElement = null;
+    
+    // Find parent ol element
+    while (target && target !== contentRef.current) {
+      if (target.nodeName === 'OL') {
+        olElement = target;
+        break;
+      }
+      if (target.nodeName === 'LI' && target.parentElement?.nodeName === 'OL') {
+        olElement = target.parentElement;
+        break;
+      }
+      target = target.parentElement;
+    }
+    
+    if (olElement) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const currentStart = olElement.getAttribute('start') || '1';
+      
+      // Create inline input
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = currentStart;
+      input.style.cssText = 'position: absolute; width: 50px; padding: 6px 8px; border: 2px solid #2563eb; border-radius: 4px; font-size: 14px; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15); text-align: center; color: #000000; background: white;';
+      
+      // Position near the clicked list item
+      const rect = olElement.getBoundingClientRect();
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+      input.style.left = (rect.left + scrollLeft - 60) + 'px';
+      input.style.top = (rect.top + scrollTop) + 'px';
+      
+      document.body.appendChild(input);
+      input.focus();
+      input.select();
+      
+      const applyValue = () => {
+        const newValue = parseInt(input.value);
+        if (!isNaN(newValue) && newValue > 0) {
+          olElement.setAttribute('start', newValue);
+          setFormData((prev) => ({
+            ...prev,
+            content: contentRef.current.innerHTML,
+          }));
+        }
+        input.remove();
+      };
+      
+      input.addEventListener('blur', applyValue);
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          applyValue();
+        } else if (event.key === 'Escape') {
+          input.remove();
+        }
+      });
+    }
+  };
+
+  const createResizableImage = (imageSrc) => {
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'relative';
+    wrapper.style.display = 'inline-block';
+    wrapper.style.maxWidth = '100%';
+    wrapper.style.margin = '10px 0';
+    wrapper.style.border = '2px solid transparent';
+    wrapper.style.padding = '2px';
+    wrapper.className = 'image-wrapper';
+    wrapper.contentEditable = 'false';
+    wrapper.tabIndex = '0'; // Make wrapper focusable
+
+    const img = document.createElement('img');
+    img.src = imageSrc;
+    img.style.width = '400px';
+    img.style.height = 'auto';
+    img.style.borderRadius = '8px';
+    img.style.display = 'block';
+    img.style.cursor = 'move';
+    img.draggable = false;
+
+    // Create resize handles (corners and edges)
+    const handles = ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'];
+    const handleElements = {};
+
+    handles.forEach(position => {
+      const handle = document.createElement('div');
+      handle.className = `resize-handle-${position}`;
+      handle.style.position = 'absolute';
+      handle.style.background = 'rgba(37, 99, 235, 0.9)';
+      handle.style.border = '2px solid white';
+      handle.style.display = 'none';
+      handle.style.zIndex = '10';
+      handle.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+      handle.style.transition = 'all 0.2s ease';
+
+      // Position and cursor based on handle type
+      if (position.includes('n')) handle.style.top = '-6px';
+      if (position.includes('s')) handle.style.bottom = '-6px';
+      if (position.includes('w')) handle.style.left = '-6px';
+      if (position.includes('e')) handle.style.right = '-6px';
+      
+      if (position === 'n' || position === 's') {
+        handle.style.width = '40px';
+        handle.style.height = '8px';
+        handle.style.left = '50%';
+        handle.style.transform = 'translateX(-50%)';
+        handle.style.cursor = 'ns-resize';
+        handle.style.borderRadius = '4px';
+      } else if (position === 'e' || position === 'w') {
+        handle.style.width = '8px';
+        handle.style.height = '40px';
+        handle.style.top = '50%';
+        handle.style.transform = 'translateY(-50%)';
+        handle.style.cursor = 'ew-resize';
+        handle.style.borderRadius = '4px';
+      } else {
+        // Corner handles - make them more prominent
+        handle.style.width = '14px';
+        handle.style.height = '14px';
+        handle.style.borderRadius = '50%';
+        handle.style.cursor = `${position}-resize`;
+      }
+      
+      // Hover effect on handles
+      handle.addEventListener('mouseenter', () => {
+        handle.style.transform = position === 'n' || position === 's' 
+          ? 'translateX(-50%) scale(1.2)' 
+          : position === 'e' || position === 'w'
+          ? 'translateY(-50%) scale(1.2)'
+          : 'scale(1.3)';
+        handle.style.background = 'rgba(37, 99, 235, 1)';
+      });
+      
+      handle.addEventListener('mouseleave', () => {
+        if (!wrapper.dataset.resizing) {
+          handle.style.transform = position === 'n' || position === 's' 
+            ? 'translateX(-50%)' 
+            : position === 'e' || position === 'w'
+            ? 'translateY(-50%)'
+            : '';
+          handle.style.background = 'rgba(37, 99, 235, 0.9)';
+        }
+      });
+
+      handleElements[position] = handle;
+      wrapper.appendChild(handle);
+    });
+
+    // Show/hide handles and border on hover
+    wrapper.addEventListener('mouseenter', () => {
+      wrapper.style.border = '2px solid rgba(37, 99, 235, 0.5)';
+      Object.values(handleElements).forEach(h => h.style.display = 'block');
+    });
+    
+    wrapper.addEventListener('mouseleave', () => {
+      if (!wrapper.dataset.resizing) {
+        wrapper.style.border = '2px solid transparent';
+        Object.values(handleElements).forEach(h => h.style.display = 'none');
+      }
+    });
+
+    // Resize functionality for all handles
+    Object.entries(handleElements).forEach(([position, handle]) => {
+      handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        wrapper.dataset.resizing = 'true';
+        
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startWidth = img.offsetWidth;
+        const startHeight = img.offsetHeight;
+        const aspectRatio = startWidth / startHeight;
+
+        const onMouseMove = (e) => {
+          let newWidth = startWidth;
+          let newHeight = startHeight;
+
+          if (position.includes('e')) {
+            newWidth = startWidth + (e.clientX - startX);
+          } else if (position.includes('w')) {
+            newWidth = startWidth - (e.clientX - startX);
+          }
+
+          if (position.includes('s')) {
+            newHeight = startHeight + (e.clientY - startY);
+          } else if (position.includes('n')) {
+            newHeight = startHeight - (e.clientY - startY);
+          }
+
+          // Maintain aspect ratio for corner handles
+          if (position.length === 2) {
+            if (Math.abs(e.clientX - startX) > Math.abs(e.clientY - startY)) {
+              newHeight = newWidth / aspectRatio;
+            } else {
+              newWidth = newHeight * aspectRatio;
+            }
+          } else if (position === 'e' || position === 'w') {
+            newHeight = newWidth / aspectRatio;
+          } else if (position === 'n' || position === 's') {
+            newWidth = newHeight * aspectRatio;
+          }
+
+          // Apply constraints
+          if (newWidth >= 100 && newWidth <= contentRef.current.offsetWidth - 20) {
+            img.style.width = newWidth + 'px';
+            img.style.height = 'auto';
+          }
+        };
+
+        const onMouseUp = () => {
+          delete wrapper.dataset.resizing;
+          wrapper.style.border = '2px solid transparent';
+          Object.values(handleElements).forEach(h => h.style.display = 'none');
+          document.removeEventListener('mousemove', onMouseMove);
+          document.removeEventListener('mouseup', onMouseUp);
+          
+          // Update form data
+          if (contentRef.current) {
+            setFormData((prev) => ({
+              ...prev,
+              content: contentRef.current.innerHTML,
+            }));
+          }
+        };
+
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+      });
+    });
+
+    // Drag-to-reposition functionality (row and column wise)
+    let isDragging = false;
+    let dragStartX, dragStartY;
+    let dragThreshold = 5; // pixels to move before initiating drag
+    let dropIndicator = null;
+
+    img.addEventListener('mousedown', (e) => {
+      // Don't interfere with resize handles
+      if (e.target.classList.contains('resize-handle')) return;
+      
+      e.preventDefault();
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      
+      const onMouseMove = (moveEvent) => {
+        const deltaX = Math.abs(moveEvent.clientX - dragStartX);
+        const deltaY = Math.abs(moveEvent.clientY - dragStartY);
+        
+        // Start dragging if moved beyond threshold
+        if (!isDragging && (deltaX > dragThreshold || deltaY > dragThreshold)) {
+          isDragging = true;
+          wrapper.style.opacity = '0.5';
+          wrapper.style.cursor = 'grabbing';
+          wrapper.style.pointerEvents = 'none'; // Allow mouse to pass through during drag
+          
+          // Create drop indicator (cursor-like vertical line)
+          dropIndicator = document.createElement('span');
+          dropIndicator.style.position = 'absolute';
+          dropIndicator.style.width = '2px';
+          dropIndicator.style.height = '20px';
+          dropIndicator.style.backgroundColor = 'rgba(37, 99, 235, 0.9)';
+          dropIndicator.style.boxShadow = '0 0 8px rgba(37, 99, 235, 0.5)';
+          dropIndicator.style.pointerEvents = 'none';
+          dropIndicator.style.zIndex = '1000';
+          document.body.appendChild(dropIndicator);
+        }
+        
+        if (isDragging && contentRef.current && dropIndicator) {
+          // Position drop indicator at mouse cursor
+          dropIndicator.style.left = moveEvent.clientX + 'px';
+          dropIndicator.style.top = moveEvent.clientY + 'px';
+        }
+      };
+      
+      const onMouseUp = (upEvent) => {
+        if (isDragging && contentRef.current) {
+          // Get the exact position where mouse was released (cross-browser)
+          let range;
+          
+          if (document.caretRangeFromPoint) {
+            // Chrome, Safari
+            range = document.caretRangeFromPoint(upEvent.clientX, upEvent.clientY);
+          } else if (document.caretPositionFromPoint) {
+            // Firefox
+            const position = document.caretPositionFromPoint(upEvent.clientX, upEvent.clientY);
+            if (position) {
+              range = document.createRange();
+              range.setStart(position.offsetNode, position.offset);
+              range.collapse(true);
+            }
+          }
+          
+          if (range) {
+            // Remove wrapper from current position
+            const parent = wrapper.parentNode;
+            if (parent) {
+              wrapper.remove();
+            }
+            
+            // Insert at new position
+            try {
+              range.insertNode(wrapper);
+              
+              // Add space after if needed
+              if (!wrapper.nextSibling || wrapper.nextSibling.nodeType !== Node.TEXT_NODE) {
+                const space = document.createTextNode('\u00A0');
+                wrapper.parentNode.insertBefore(space, wrapper.nextSibling);
+              }
+              
+              // Update form data
+              setFormData((prev) => ({
+                ...prev,
+                content: contentRef.current.innerHTML,
+              }));
+            } catch (error) {
+              // Fallback: append to editor if insertion fails
+              contentRef.current.appendChild(wrapper);
+            }
+          }
+        }
+        
+        // Cleanup
+        if (dropIndicator && dropIndicator.parentNode) {
+          dropIndicator.remove();
+        }
+        wrapper.style.opacity = '1';
+        wrapper.style.cursor = '';
+        wrapper.style.pointerEvents = '';
+        isDragging = false;
+        dropIndicator = null;
+        
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
+      
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+
+    img.style.cursor = 'grab';
+
+    // Click to select image
+    wrapper.addEventListener('click', (e) => {
+      e.stopPropagation();
+      wrapper.focus();
+      wrapper.style.border = '2px solid rgba(37, 99, 235, 0.8)';
+      wrapper.style.outline = 'none';
+    });
+
+    // Handle focus/blur for selection visual feedback
+    wrapper.addEventListener('focus', () => {
+      wrapper.style.border = '2px solid rgba(37, 99, 235, 0.8)';
+      Object.values(handleElements).forEach(h => h.style.display = 'block');
+    });
+
+    wrapper.addEventListener('blur', () => {
+      if (!wrapper.dataset.resizing) {
+        wrapper.style.border = '2px solid transparent';
+        Object.values(handleElements).forEach(h => h.style.display = 'none');
+      }
+    });
+
+    // Delete image on Delete or Backspace key
+    wrapper.addEventListener('keydown', (e) => {
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        e.stopPropagation();
+        wrapper.remove();
+        
+        // Update form data
+        if (contentRef.current) {
+          setFormData((prev) => ({
+            ...prev,
+            content: contentRef.current.innerHTML,
+          }));
+        }
+      }
+    });
+
+    wrapper.appendChild(img);
+    return wrapper;
+  };
+
+  const insertImageIntoEditor = (imageSrc) => {
+    if (!contentRef.current) return;
+
+    const wrapper = createResizableImage(imageSrc);
+    
+    contentRef.current.focus();
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(wrapper);
+      
+      // Add a line break after image wrapper
+      const br = document.createElement('br');
+      wrapper.parentNode.insertBefore(br, wrapper.nextSibling);
+      
+      // Update form data
+      setFormData((prev) => ({
+        ...prev,
+        content: contentRef.current.innerHTML,
+      }));
+    }
+  };
+
+  const handleImageInsert = (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !file.type.startsWith('image/')) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      insertImageIntoEditor(event.target.result);
+    };
+    reader.readAsDataURL(file);
+    
+    // Reset input
+    e.target.value = '';
+  };
+
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            insertImageIntoEditor(event.target.result);
+          };
+          reader.readAsDataURL(file);
+        }
+        break;
+      }
+    }
+  };
+
+  const handleEditorDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (contentRef.current) {
+      contentRef.current.style.borderColor = 'rgba(37, 99, 235, 0.5)';
+    }
+  };
+
+  const handleEditorDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (contentRef.current) {
+      contentRef.current.style.borderColor = '';
+    }
+  };
+
+  const handleEditorDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (contentRef.current) {
+      contentRef.current.style.borderColor = '';
+    }
+
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          insertImageIntoEditor(event.target.result);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+  };
+
   const handleContentChange = () => {
     if (contentRef.current) {
       setFormData((prev) => ({
         ...prev,
         content: contentRef.current.innerHTML,
       }));
+      
+      // Make list items draggable
+      const listItems = contentRef.current.querySelectorAll('li');
+      listItems.forEach(li => {
+        if (!li.hasAttribute('draggable')) {
+          li.setAttribute('draggable', 'true');
+          li.style.cursor = 'move';
+          
+          li.addEventListener('dragstart', handleListItemDragStart);
+          li.addEventListener('dragover', handleListItemDragOver);
+          li.addEventListener('drop', handleListItemDrop);
+          li.addEventListener('dragend', handleListItemDragEnd);
+          li.addEventListener('dragleave', handleListItemDragLeave);
+        }
+      });
     }
     updateActiveFormats();
   };
 
+  let draggedListItem = null;
+
+  const handleListItemDragStart = (e) => {
+    draggedListItem = e.currentTarget;
+    e.currentTarget.style.opacity = '0.5';
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/html', e.currentTarget.innerHTML);
+  };
+
+  const handleListItemDragOver = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    
+    const targetLi = e.currentTarget;
+    if (targetLi && targetLi !== draggedListItem && targetLi.nodeName === 'LI') {
+      targetLi.style.borderTop = '2px solid #2563eb';
+    }
+  };
+
+  const handleListItemDragLeave = (e) => {
+    const targetLi = e.currentTarget;
+    if (targetLi && targetLi.nodeName === 'LI') {
+      targetLi.style.borderTop = '';
+    }
+  };
+
+  const handleListItemDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const targetLi = e.currentTarget;
+    targetLi.style.borderTop = '';
+    
+    if (draggedListItem && targetLi && targetLi !== draggedListItem && targetLi.nodeName === 'LI') {
+      const parent = targetLi.parentNode;
+      
+      // Insert dragged item before target
+      parent.insertBefore(draggedListItem, targetLi);
+      
+      // Update form data
+      setFormData((prev) => ({
+        ...prev,
+        content: contentRef.current.innerHTML,
+      }));
+    }
+  };
+
+  const handleListItemDragEnd = (e) => {
+    e.currentTarget.style.opacity = '1';
+    
+    // Clear all border indicators
+    if (contentRef.current) {
+      const allListItems = contentRef.current.querySelectorAll('li');
+      allListItems.forEach(li => {
+        li.style.borderTop = '';
+      });
+    }
+    
+    draggedListItem = null;
+  };
+
   const handleKeyDown = (e) => {
+    // Handle image deletion
+    const selection = window.getSelection();
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      const node = range.startContainer;
+      
+      // Check if we're at an image wrapper or its parent
+      let imageWrapper = null;
+      
+      // Check if node is the wrapper itself
+      if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('image-wrapper')) {
+        imageWrapper = node;
+      }
+      // Check if parent is the wrapper
+      else if (node.parentElement?.classList?.contains('image-wrapper')) {
+        imageWrapper = node.parentElement;
+      }
+      // Check if any ancestor is the wrapper
+      else {
+        let current = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+        while (current && current !== contentRef.current) {
+          if (current.classList?.contains('image-wrapper')) {
+            imageWrapper = current;
+            break;
+          }
+          current = current.parentElement;
+        }
+      }
+      
+      // Also check if cursor is right before/after an image wrapper
+      if (!imageWrapper) {
+        if (e.key === 'Delete') {
+          // Check next sibling
+          const nextNode = range.endContainer.childNodes?.[range.endOffset];
+          if (nextNode?.classList?.contains('image-wrapper')) {
+            imageWrapper = nextNode;
+          }
+        } else if (e.key === 'Backspace') {
+          // Check previous sibling
+          const prevNode = range.startContainer.childNodes?.[range.startOffset - 1];
+          if (prevNode?.classList?.contains('image-wrapper')) {
+            imageWrapper = prevNode;
+          }
+        }
+      }
+      
+      if (imageWrapper) {
+        e.preventDefault();
+        imageWrapper.remove();
+        
+        // Update form data
+        setFormData((prev) => ({
+          ...prev,
+          content: contentRef.current.innerHTML,
+        }));
+        return;
+      }
+    }
+
     // Handle keyboard shortcuts
     if (e.ctrlKey || e.metaKey) {
       switch (e.key) {
@@ -155,6 +931,9 @@ export default function CreateNote() {
       if (!event.target.closest(".color-picker-container")) {
         setShowColorPicker(false);
         setShowHighlightPicker(false);
+      }
+      if (!event.target.closest(".list-dropdown-container")) {
+        setShowListDropdown(false);
       }
     };
 
@@ -606,48 +1385,130 @@ export default function CreateNote() {
 
               <div className="w-px h-6 bg-gray-300 mx-1"></div>
 
-              {/* Lists */}
+              {/* Lists Dropdown */}
+              <div className="relative list-dropdown-container">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowListDropdown(!showListDropdown);
+                    setShowColorPicker(false);
+                    setShowHighlightPicker(false);
+                  }}
+                  className="p-2 rounded-md bg-white text-gray-700 hover:bg-gray-100 border transition-all duration-200 flex items-center"
+                  title="Insert List"
+                >
+                  <svg
+                    className="w-4 h-4"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
+                  </svg>
+                  <svg
+                    className="w-3 h-3 ml-1"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                </button>
+
+                {/* List Dropdown Menu */}
+                {showListDropdown && (
+                  <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50 py-1 w-48">
+                    <button
+                      type="button"
+                      onClick={() => applyListStyle('none')}
+                      className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center space-x-3 text-sm text-black ${
+                        getCurrentListType() === null ? 'bg-blue-100' : ''
+                      }`}
+                    >
+                      <svg className="w-4 h-4 text-black" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                      </svg>
+                      <span>None</span>
+                    </button>
+                    <div className="border-t border-gray-200 my-1"></div>
+                    <button
+                      type="button"
+                      onClick={() => applyListStyle('bullet')}
+                      className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center space-x-3 text-sm text-black ${
+                        getCurrentListType() === 'bullet' ? 'bg-blue-100' : ''
+                      }`}
+                    >
+                      <svg className="w-4 h-4 text-black" fill="currentColor" viewBox="0 0 20 20">
+                        <circle cx="4" cy="10" r="2" />
+                      </svg>
+                      <span>Bullet List</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyListStyle('numbered')}
+                      className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center space-x-3 text-sm text-black ${
+                        getCurrentListType() === 'numbered' ? 'bg-blue-100' : ''
+                      }`}
+                    >
+                      <span className="w-4 text-center font-semibold">1.</span>
+                      <span>Numbered List</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyListStyle('lower-alpha')}
+                      className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center space-x-3 text-sm text-black ${
+                        getCurrentListType() === 'lower-alpha' ? 'bg-blue-100' : ''
+                      }`}
+                    >
+                      <span className="w-4 text-center font-semibold">a.</span>
+                      <span>Lowercase Letters</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => applyListStyle('upper-alpha')}
+                      className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center space-x-3 text-sm text-black ${
+                        getCurrentListType() === 'upper-alpha' ? 'bg-blue-100' : ''
+                      }`}
+                    >
+                      <span className="w-4 text-center font-semibold">A.</span>
+                      <span>Uppercase Letters</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="w-px h-6 bg-gray-300 mx-1"></div>
+
+              {/* Insert Image */}
               <button
                 type="button"
-                onClick={() => formatText("insertUnorderedList")}
+                onClick={() => imageInputRef.current?.click()}
                 className="p-2 rounded-md bg-white text-gray-700 hover:bg-gray-100 border transition-all duration-200"
-                title="Bullet List"
+                title="Insert Image"
               >
                 <svg
                   className="w-4 h-4"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
                 >
-                  <circle cx="10" cy="5" r="2" />
-                  <circle cx="10" cy="10" r="2" />
-                  <circle cx="10" cy="15" r="2" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
                 </svg>
               </button>
-
-              <button
-                type="button"
-                onClick={() => formatText("insertOrderedList")}
-                className="p-2 rounded-md bg-white text-gray-700 hover:bg-gray-100 border transition-all duration-200"
-                title="Numbered List"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  {/* Simple digit 1 */}
-                  <rect x="8" y="2" width="2" height="6" />
-                  <rect x="7" y="2" width="2" height="1" />
-                  <rect x="6" y="7" width="6" height="1" />
-
-                  {/* Simple digit 2 */}
-                  <rect x="4" y="11" width="8" height="1" />
-                  <rect x="11" y="12" width="1" height="2" />
-                  <rect x="4" y="14" width="8" height="1" />
-                  <rect x="4" y="15" width="1" height="2" />
-                  <rect x="4" y="16" width="8" height="1" />
-                </svg>
-              </button>
+              <input
+                ref={imageInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageInsert}
+                className="hidden"
+              />
 
               <div className="w-px h-6 bg-gray-300 mx-1"></div>
 
@@ -680,13 +1541,18 @@ export default function CreateNote() {
               onKeyDown={handleKeyDown}
               onKeyUp={handleKeyUp}
               onMouseUp={handleMouseUp}
+              onPaste={handlePaste}
+              onDragOver={handleEditorDragOver}
+              onDragLeave={handleEditorDragLeave}
+              onDrop={handleEditorDrop}
+              onDoubleClick={handleEditorDoubleClick}
               className="rich-text-editor w-full px-4 py-3 border border-gray-300 border-t-0 rounded-b-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 bg-white"
               style={{
                 fontSize: "16px",
                 lineHeight: "1.6",
                 color: "#000000",
               }}
-              data-placeholder="Start writing your note content here..."
+              data-placeholder="Start writing your note content here... (You can paste or drag & drop images, double-click numbered lists to change start number)"
             />
           </div>
 
