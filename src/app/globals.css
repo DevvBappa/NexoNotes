@@ -485,17 +485,17 @@ input:focus {
 }
 
 .rich-text-editor ul {
-  list-style-type: disc !important;
+  list-style-type: disc;
 }
 
 .rich-text-editor ol {
-  list-style-type: decimal !important;
+  list-style-type: decimal;
 }
 
 .rich-text-editor li {
   margin: 0.25rem 0;
-  display: list-item !important;
-  list-style: inherit !important;
+  display: list-item;
+  list-style: inherit;
 }
 
 /* Ensure list markers are visible and scale with text */

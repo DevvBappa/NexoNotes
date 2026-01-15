@@ -1,11 +1,110 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function RegisterPage() {
+  const [formData, setFormData] = useState({
+    displayName: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [formErrors, setFormErrors] = useState({});
+
+  const { register, user, error, clearError } = useAuth();
+  const router = useRouter();
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      router.push("/dashboard");
+    }
+  }, [user, router]);
+
+  // Clear error when component unmounts
+  useEffect(() => {
+    return () => clearError();
+  }, [clearError]);
+
+  const validateForm = () => {
+    const errors = {};
+
+    if (!formData.displayName.trim()) {
+      errors.displayName = "Display name is required";
+    } else if (formData.displayName.trim().length < 2) {
+      errors.displayName = "Display name must be at least 2 characters";
+    }
+
+    if (!formData.email) {
+      errors.email = "Email is required";
+    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
+      errors.email = "Email is invalid";
+    }
+
+    if (!formData.password) {
+      errors.password = "Password is required";
+    } else if (formData.password.length < 6) {
+      errors.password = "Password must be at least 6 characters";
+    }
+
+    if (!formData.confirmPassword) {
+      errors.confirmPassword = "Please confirm your password";
+    } else if (formData.password !== formData.confirmPassword) {
+      errors.confirmPassword = "Passwords do not match";
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+
+    if (formErrors[name]) {
+      setFormErrors((prev) => ({
+        ...prev,
+        [name]: "",
+      }));
+    }
+    if (error) clearError();
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!validateForm()) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      clearError();
+
+      await register(
+        formData.email,
+        formData.password,
+        formData.displayName.trim()
+      );
+
+      setTimeout(() => {
+        router.push("/dashboard");
+      }, 100);
+    } catch (error) {
+      console.error("Registration error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 animate-fade-in">
@@ -27,22 +126,39 @@ export default function RegisterPage() {
         </div>
 
         {/* Registration Form */}
-        <form className="space-y-4 animate-slide-up animation-delay-300">
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-4 animate-slide-up animation-delay-300"
+        >
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
+              <p className="text-red-700 text-sm">{error}</p>
+            </div>
+          )}
+
           <div className="group">
             <label
-              htmlFor="fullName"
+              htmlFor="displayName"
               className="block text-sm font-medium text-black group-focus-within:text-blue-600 transition-colors"
             >
               Full Name
             </label>
             <input
               type="text"
-              id="fullName"
-              name="fullName"
+              id="displayName"
+              name="displayName"
+              value={formData.displayName}
+              onChange={handleChange}
               required
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-blue-400 transition-all duration-200 placeholder-black"
               placeholder="Enter your full name"
             />
+            {formErrors.displayName && (
+              <p className="text-red-500 text-sm mt-1">
+                {formErrors.displayName}
+              </p>
+            )}
           </div>
 
           <div className="group">
@@ -56,10 +172,15 @@ export default function RegisterPage() {
               type="email"
               id="email"
               name="email"
+              value={formData.email}
+              onChange={handleChange}
               required
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-blue-400 transition-all duration-200 placeholder-black"
               placeholder="Enter your email"
             />
+            {formErrors.email && (
+              <p className="text-red-500 text-sm mt-1">{formErrors.email}</p>
+            )}
           </div>
 
           <div className="group">
@@ -74,10 +195,17 @@ export default function RegisterPage() {
                 type={showPassword ? "text" : "password"}
                 id="password"
                 name="password"
+                value={formData.password}
+                onChange={handleChange}
                 required
                 className="mt-1 block w-full px-3 py-2 pr-10 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-blue-400 transition-all duration-200 placeholder-black"
                 placeholder="Create a password"
               />
+              {formErrors.password && (
+                <p className="text-red-500 text-sm mt-1">
+                  {formErrors.password}
+                </p>
+              )}
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
@@ -134,10 +262,17 @@ export default function RegisterPage() {
                 type={showConfirmPassword ? "text" : "password"}
                 id="confirmPassword"
                 name="confirmPassword"
+                value={formData.confirmPassword}
+                onChange={handleChange}
                 required
                 className="mt-1 block w-full px-3 py-2 pr-10 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-blue-400 transition-all duration-200 placeholder-black"
                 placeholder="Confirm your password"
               />
+              {formErrors.confirmPassword && (
+                <p className="text-red-500 text-sm mt-1">
+                  {formErrors.confirmPassword}
+                </p>
+              )}
               <button
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
@@ -204,9 +339,10 @@ export default function RegisterPage() {
 
           <button
             type="submit"
-            className="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 hover:scale-105 hover:shadow-lg transition-all duration-300 transform active:scale-95"
+            disabled={loading}
+            className="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 hover:scale-105 hover:shadow-lg transition-all duration-300 transform active:scale-95 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:transform-none"
           >
-            Create Account
+            {loading ? "Creating Account..." : "Create Account"}
           </button>
         </form>
 

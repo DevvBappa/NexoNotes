@@ -7,6 +7,9 @@ import {
   signOut,
   onAuthStateChanged,
   updateProfile,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
 } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
@@ -36,11 +39,12 @@ export const AuthProvider = ({ children }) => {
       setLoading(true);
 
       // Create user with email and password
-      const { user } = await createUserWithEmailAndPassword(
+      const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
         password
       );
+      const user = userCredential.user;
 
       // Update user profile with display name
       await updateProfile(user, {
@@ -66,13 +70,24 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Login user
-  const login = async (email, password) => {
+  const login = async (email, password, rememberMe = false) => {
     try {
       setError(null);
       setLoading(true);
 
-      const { user } = await signInWithEmailAndPassword(auth, email, password);
-      return user;
+      // Set persistence based on rememberMe option
+      const persistence = rememberMe
+        ? browserLocalPersistence // Persists across browser sessions
+        : browserSessionPersistence; // Clears when browser is closed
+
+      await setPersistence(auth, persistence);
+
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email,
+        password
+      );
+      return userCredential.user;
     } catch (error) {
       setError(error.message);
       throw error;

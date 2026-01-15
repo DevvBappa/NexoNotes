@@ -78,8 +78,10 @@ export const withAuth = (WrappedComponent) => {
     const router = useRouter();
 
     useEffect(() => {
-      // If not loading and no user, the component will show unauthorized access
-      // No automatic redirect here to allow the unauthorized component to show
+      // Redirect to login if not authenticated
+      if (!loading && !user) {
+        router.push("/login");
+      }
     }, [user, loading, router]);
 
     // Show loading spinner while checking authentication
@@ -87,9 +89,9 @@ export const withAuth = (WrappedComponent) => {
       return <LoadingSpinner />;
     }
 
-    // Show unauthorized access if no user
+    // Redirect if no user (show loading while redirecting)
     if (!user) {
-      return <UnauthorizedAccess />;
+      return <LoadingSpinner />;
     }
 
     // User is authenticated, render the wrapped component

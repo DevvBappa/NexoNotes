@@ -64,8 +64,8 @@ export const NotesProvider = ({ children }) => {
         id: docRef.id,
       };
 
-      // Update local state
-      setNotes((prevNotes) => [newNote, ...prevNotes]);
+      // Don't update local state - let the real-time listener handle it
+      // This prevents duplicates
 
       return newNote;
     } catch (error) {
@@ -210,8 +210,8 @@ export const NotesProvider = ({ children }) => {
 
       await deleteDoc(noteRef);
 
-      // Update local state
-      setNotes((prevNotes) => prevNotes.filter((note) => note.id !== noteId));
+      // Don't update local state - let the real-time listener handle it
+      // This prevents sync issues
 
       return true;
     } catch (error) {

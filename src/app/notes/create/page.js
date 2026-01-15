@@ -3,9 +3,16 @@
 import Link from "next/link";
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNotes } from "@/contexts/NotesContext";
+import { useStorage } from "@/contexts/StorageContext";
+import { withAuth } from "@/components/auth/ProtectedRoute";
 
-export default function CreateNote() {
+function CreateNote() {
   const router = useRouter();
+  const { user } = useAuth();
+  const { createNote, loading: notesLoading } = useNotes();
+  const { uploadMultipleFiles } = useStorage();
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
   const contentRef = useRef(null);
@@ -27,6 +34,8 @@ export default function CreateNote() {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showHighlightPicker, setShowHighlightPicker] = useState(false);
   const [showListDropdown, setShowListDropdown] = useState(false);
+  const [tagError, setTagError] = useState("");
+  const [parsedTags, setParsedTags] = useState([]);
 
   // Color options for text and highlighting
   const textColors = [
@@ -62,18 +71,21 @@ export default function CreateNote() {
     if (contentRef.current) {
       contentRef.current.focus();
     }
-    
+
     // Execute the formatting command
     const success = document.execCommand(command, false, value);
-    
+
     // Special handling for list commands to ensure they work properly
-    if ((command === 'insertUnorderedList' || command === 'insertOrderedList') && contentRef.current) {
+    if (
+      (command === "insertUnorderedList" || command === "insertOrderedList") &&
+      contentRef.current
+    ) {
       // If no text is selected and cursor is at the beginning, add some content first
       const selection = window.getSelection();
       if (selection.rangeCount > 0) {
         const range = selection.getRangeAt(0);
-        if (range.collapsed && contentRef.current.innerHTML.trim() === '') {
-          contentRef.current.innerHTML = '<div><br></div>';
+        if (range.collapsed && contentRef.current.innerHTML.trim() === "") {
+          contentRef.current.innerHTML = "<div><br></div>";
           // Place cursor in the div
           range.setStart(contentRef.current.firstChild, 0);
           range.setEnd(contentRef.current.firstChild, 0);
@@ -84,52 +96,63 @@ export default function CreateNote() {
         }
       }
     }
-    
+
     // Special handling for fontSize to apply to list items and markers
-    if (command === 'fontSize' && contentRef.current) {
+    if (command === "fontSize" && contentRef.current) {
       setTimeout(() => {
         const selection = window.getSelection();
         if (selection.rangeCount > 0) {
           const range = selection.getRangeAt(0);
-          
+
           // Get all list items that might be affected
           const listItems = new Set();
-          
+
           // Check if we're in a list item
           let node = range.commonAncestorContainer;
-          let current = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-          
+          let current =
+            node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+
           while (current && current !== contentRef.current) {
-            if (current.nodeName === 'LI') {
+            if (current.nodeName === "LI") {
               listItems.add(current);
               break;
             }
             current = current.parentElement;
           }
-          
+
           // Also check for selected range
           const container = range.commonAncestorContainer;
           if (container.nodeType === Node.ELEMENT_NODE) {
-            const selectedLis = container.querySelectorAll('li');
-            selectedLis.forEach(li => listItems.add(li));
+            const selectedLis = container.querySelectorAll("li");
+            selectedLis.forEach((li) => listItems.add(li));
           }
-          
+
           // Apply font-size to li elements
-          listItems.forEach(li => {
+          listItems.forEach((li) => {
             // Get all font elements inside
-            const fontElements = li.querySelectorAll('font[size], [style*="font-size"]');
+            const fontElements = li.querySelectorAll(
+              'font[size], [style*="font-size"]'
+            );
             if (fontElements.length > 0) {
               // Use the first one's font size
               const firstElement = fontElements[0];
               let fontSize = firstElement.style.fontSize;
-              
+
               // Handle font size attribute
-              if (!fontSize && firstElement.hasAttribute('size')) {
-                const sizeAttr = firstElement.getAttribute('size');
-                const sizeMap = { '1': '10px', '2': '13px', '3': '16px', '4': '18px', '5': '24px', '6': '32px', '7': '48px' };
-                fontSize = sizeMap[sizeAttr] || '16px';
+              if (!fontSize && firstElement.hasAttribute("size")) {
+                const sizeAttr = firstElement.getAttribute("size");
+                const sizeMap = {
+                  1: "10px",
+                  2: "13px",
+                  3: "16px",
+                  4: "18px",
+                  5: "24px",
+                  6: "32px",
+                  7: "48px",
+                };
+                fontSize = sizeMap[sizeAttr] || "16px";
               }
-              
+
               if (fontSize) {
                 li.style.fontSize = fontSize;
               }
@@ -138,9 +161,9 @@ export default function CreateNote() {
         }
       }, 50);
     }
-    
+
     updateActiveFormats();
-    
+
     // Update form data with the new content
     if (contentRef.current) {
       setFormData((prev) => ({
@@ -148,7 +171,7 @@ export default function CreateNote() {
         content: contentRef.current.innerHTML,
       }));
     }
-    
+
     return success;
   };
 
@@ -162,99 +185,128 @@ export default function CreateNote() {
 
   const applyListStyle = (listType) => {
     const currentListType = getCurrentListType();
-    
+
     // If clicking None, remove any list
-    if (listType === 'none') {
-      if (currentListType === 'bullet') {
-        formatText('insertUnorderedList'); // Toggle off
+    if (listType === "none") {
+      if (currentListType === "bullet") {
+        formatText("insertUnorderedList"); // Toggle off
       } else if (currentListType) {
-        formatText('insertOrderedList'); // Toggle off
+        formatText("insertOrderedList"); // Toggle off
       }
       setShowListDropdown(false);
       return;
     }
-    
+
     // If clicking same list type, toggle it off
     if (currentListType === listType) {
-      if (listType === 'bullet') {
-        formatText('insertUnorderedList');
+      if (listType === "bullet") {
+        formatText("insertUnorderedList");
       } else {
-        formatText('insertOrderedList');
+        formatText("insertOrderedList");
       }
       setShowListDropdown(false);
       return;
     }
-    
+
     // If switching from one list type to another, remove old first
     if (currentListType && currentListType !== listType) {
-      if (currentListType === 'bullet') {
-        formatText('insertUnorderedList'); // Remove bullet
+      if (currentListType === "bullet") {
+        formatText("insertUnorderedList"); // Remove bullet
       } else {
-        formatText('insertOrderedList'); // Remove ordered
+        formatText("insertOrderedList"); // Remove ordered
       }
     }
-    
-    if (listType === 'bullet') {
-      formatText('insertUnorderedList');
+
+    if (listType === "bullet") {
+      formatText("insertUnorderedList");
       // Ensure bullet style
       setTimeout(() => {
         const selection = window.getSelection();
         if (selection.rangeCount > 0) {
           let node = selection.getRangeAt(0).commonAncestorContainer;
-          let current = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+          let current =
+            node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
           while (current && current !== contentRef.current) {
-            if (current.nodeName === 'UL') {
-              current.style.listStyleType = 'disc';
+            if (current.nodeName === "UL") {
+              current.style.listStyleType = "disc";
               break;
             }
             current = current.parentElement;
           }
         }
       }, 10);
-    } else if (listType === 'numbered' || listType === 'lower-alpha' || listType === 'upper-alpha') {
-      formatText('insertOrderedList');
-      // Apply the specific list style
+    } else if (
+      listType === "numbered" ||
+      listType === "lower-alpha" ||
+      listType === "upper-alpha"
+    ) {
+      formatText("insertOrderedList");
+      // Apply the specific list style (use type attribute + listStyleType and update li markers)
       setTimeout(() => {
         const selection = window.getSelection();
         if (selection.rangeCount > 0) {
           let node = selection.getRangeAt(0).commonAncestorContainer;
-          let current = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+          let current =
+            node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
           while (current && current !== contentRef.current) {
-            if (current.nodeName === 'OL') {
-              if (listType === 'numbered') {
-                current.style.listStyleType = 'decimal';
-              } else if (listType === 'lower-alpha') {
-                current.style.listStyleType = 'lower-alpha';
-              } else if (listType === 'upper-alpha') {
-                current.style.listStyleType = 'upper-alpha';
+            if (current.nodeName === "OL") {
+              let styleType = "decimal";
+              if (listType === "numbered") {
+                styleType = "decimal";
+                current.removeAttribute("type");
+              } else if (listType === "lower-alpha") {
+                styleType = "lower-alpha";
+                current.setAttribute("type", "a");
+              } else if (listType === "upper-alpha") {
+                styleType = "upper-alpha";
+                current.setAttribute("type", "A");
               }
+
+              current.style.listStyleType = styleType;
+
+              // Ensure each li uses the correct marker style
+              current.querySelectorAll("li").forEach((li) => {
+                li.style.listStyleType = styleType;
+                li.style.display = "list-item";
+              });
+
               break;
             }
             current = current.parentElement;
           }
         }
-      }, 10);
+      }, 50);
     }
     setShowListDropdown(false);
   };
 
   const getCurrentListType = () => {
     if (!contentRef.current) return null;
-    
+
     const selection = window.getSelection();
     if (selection.rangeCount > 0) {
       let node = selection.getRangeAt(0).commonAncestorContainer;
-      let current = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
-      
+      let current =
+        node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+
       while (current && current !== contentRef.current) {
-        if (current.nodeName === 'UL') {
-          return 'bullet';
+        if (current.nodeName === "UL") {
+          return "bullet";
         }
-        if (current.nodeName === 'OL') {
-          const listStyle = current.style.listStyleType || 'decimal';
-          if (listStyle === 'lower-alpha') return 'lower-alpha';
-          if (listStyle === 'upper-alpha') return 'upper-alpha';
-          return 'numbered';
+        if (current.nodeName === "OL") {
+          const computed = window.getComputedStyle(current);
+          const listStyle = computed.listStyleType || "decimal";
+          if (
+            listStyle === "lower-alpha" ||
+            current.getAttribute("type") === "a"
+          )
+            return "lower-alpha";
+          if (
+            listStyle === "upper-alpha" ||
+            current.getAttribute("type") === "A"
+          )
+            return "upper-alpha";
+          return "numbered";
         }
         current = current.parentElement;
       }
@@ -266,47 +318,50 @@ export default function CreateNote() {
     // Check if double-click is on a numbered list item or marker
     let target = e.target;
     let olElement = null;
-    
+
     // Find parent ol element
     while (target && target !== contentRef.current) {
-      if (target.nodeName === 'OL') {
+      if (target.nodeName === "OL") {
         olElement = target;
         break;
       }
-      if (target.nodeName === 'LI' && target.parentElement?.nodeName === 'OL') {
+      if (target.nodeName === "LI" && target.parentElement?.nodeName === "OL") {
         olElement = target.parentElement;
         break;
       }
       target = target.parentElement;
     }
-    
+
     if (olElement) {
       e.preventDefault();
       e.stopPropagation();
-      
-      const currentStart = olElement.getAttribute('start') || '1';
-      
+
+      const currentStart = olElement.getAttribute("start") || "1";
+
       // Create inline input
-      const input = document.createElement('input');
-      input.type = 'text';
+      const input = document.createElement("input");
+      input.type = "text";
       input.value = currentStart;
-      input.style.cssText = 'position: absolute; width: 50px; padding: 6px 8px; border: 2px solid #2563eb; border-radius: 4px; font-size: 14px; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15); text-align: center; color: #000000; background: white;';
-      
+      input.style.cssText =
+        "position: absolute; width: 50px; padding: 6px 8px; border: 2px solid #2563eb; border-radius: 4px; font-size: 14px; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.15); text-align: center; color: #000000; background: white;";
+
       // Position near the clicked list item
       const rect = olElement.getBoundingClientRect();
-      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-      const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
-      input.style.left = (rect.left + scrollLeft - 60) + 'px';
-      input.style.top = (rect.top + scrollTop) + 'px';
-      
+      const scrollTop =
+        window.pageYOffset || document.documentElement.scrollTop;
+      const scrollLeft =
+        window.pageXOffset || document.documentElement.scrollLeft;
+      input.style.left = rect.left + scrollLeft - 60 + "px";
+      input.style.top = rect.top + scrollTop + "px";
+
       document.body.appendChild(input);
       input.focus();
       input.select();
-      
+
       const applyValue = () => {
         const newValue = parseInt(input.value);
         if (!isNaN(newValue) && newValue > 0) {
-          olElement.setAttribute('start', newValue);
+          olElement.setAttribute("start", newValue);
           setFormData((prev) => ({
             ...prev,
             content: contentRef.current.innerHTML,
@@ -314,12 +369,12 @@ export default function CreateNote() {
         }
         input.remove();
       };
-      
-      input.addEventListener('blur', applyValue);
-      input.addEventListener('keydown', (event) => {
-        if (event.key === 'Enter') {
+
+      input.addEventListener("blur", applyValue);
+      input.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") {
           applyValue();
-        } else if (event.key === 'Escape') {
+        } else if (event.key === "Escape") {
           input.remove();
         }
       });
@@ -327,87 +382,89 @@ export default function CreateNote() {
   };
 
   const createResizableImage = (imageSrc) => {
-    const wrapper = document.createElement('div');
-    wrapper.style.position = 'relative';
-    wrapper.style.display = 'inline-block';
-    wrapper.style.maxWidth = '100%';
-    wrapper.style.margin = '10px 0';
-    wrapper.style.border = '2px solid transparent';
-    wrapper.style.padding = '2px';
-    wrapper.className = 'image-wrapper';
-    wrapper.contentEditable = 'false';
-    wrapper.tabIndex = '0'; // Make wrapper focusable
+    const wrapper = document.createElement("div");
+    wrapper.style.position = "relative";
+    wrapper.style.display = "inline-block";
+    wrapper.style.maxWidth = "100%";
+    wrapper.style.margin = "10px 0";
+    wrapper.style.border = "2px solid transparent";
+    wrapper.style.padding = "2px";
+    wrapper.className = "image-wrapper";
+    wrapper.contentEditable = "false";
+    wrapper.tabIndex = "0"; // Make wrapper focusable
 
-    const img = document.createElement('img');
+    const img = document.createElement("img");
     img.src = imageSrc;
-    img.style.width = '400px';
-    img.style.height = 'auto';
-    img.style.borderRadius = '8px';
-    img.style.display = 'block';
-    img.style.cursor = 'move';
+    img.style.width = "400px";
+    img.style.height = "auto";
+    img.style.borderRadius = "8px";
+    img.style.display = "block";
+    img.style.cursor = "move";
     img.draggable = false;
 
     // Create resize handles (corners and edges)
-    const handles = ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'];
+    const handles = ["nw", "ne", "sw", "se", "n", "s", "e", "w"];
     const handleElements = {};
 
-    handles.forEach(position => {
-      const handle = document.createElement('div');
+    handles.forEach((position) => {
+      const handle = document.createElement("div");
       handle.className = `resize-handle-${position}`;
-      handle.style.position = 'absolute';
-      handle.style.background = 'rgba(37, 99, 235, 0.9)';
-      handle.style.border = '2px solid white';
-      handle.style.display = 'none';
-      handle.style.zIndex = '10';
-      handle.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
-      handle.style.transition = 'all 0.2s ease';
+      handle.style.position = "absolute";
+      handle.style.background = "rgba(37, 99, 235, 0.9)";
+      handle.style.border = "2px solid white";
+      handle.style.display = "none";
+      handle.style.zIndex = "10";
+      handle.style.boxShadow = "0 2px 4px rgba(0,0,0,0.3)";
+      handle.style.transition = "all 0.2s ease";
 
       // Position and cursor based on handle type
-      if (position.includes('n')) handle.style.top = '-6px';
-      if (position.includes('s')) handle.style.bottom = '-6px';
-      if (position.includes('w')) handle.style.left = '-6px';
-      if (position.includes('e')) handle.style.right = '-6px';
-      
-      if (position === 'n' || position === 's') {
-        handle.style.width = '40px';
-        handle.style.height = '8px';
-        handle.style.left = '50%';
-        handle.style.transform = 'translateX(-50%)';
-        handle.style.cursor = 'ns-resize';
-        handle.style.borderRadius = '4px';
-      } else if (position === 'e' || position === 'w') {
-        handle.style.width = '8px';
-        handle.style.height = '40px';
-        handle.style.top = '50%';
-        handle.style.transform = 'translateY(-50%)';
-        handle.style.cursor = 'ew-resize';
-        handle.style.borderRadius = '4px';
+      if (position.includes("n")) handle.style.top = "-6px";
+      if (position.includes("s")) handle.style.bottom = "-6px";
+      if (position.includes("w")) handle.style.left = "-6px";
+      if (position.includes("e")) handle.style.right = "-6px";
+
+      if (position === "n" || position === "s") {
+        handle.style.width = "40px";
+        handle.style.height = "8px";
+        handle.style.left = "50%";
+        handle.style.transform = "translateX(-50%)";
+        handle.style.cursor = "ns-resize";
+        handle.style.borderRadius = "4px";
+      } else if (position === "e" || position === "w") {
+        handle.style.width = "8px";
+        handle.style.height = "40px";
+        handle.style.top = "50%";
+        handle.style.transform = "translateY(-50%)";
+        handle.style.cursor = "ew-resize";
+        handle.style.borderRadius = "4px";
       } else {
         // Corner handles - make them more prominent
-        handle.style.width = '14px';
-        handle.style.height = '14px';
-        handle.style.borderRadius = '50%';
+        handle.style.width = "14px";
+        handle.style.height = "14px";
+        handle.style.borderRadius = "50%";
         handle.style.cursor = `${position}-resize`;
       }
-      
+
       // Hover effect on handles
-      handle.addEventListener('mouseenter', () => {
-        handle.style.transform = position === 'n' || position === 's' 
-          ? 'translateX(-50%) scale(1.2)' 
-          : position === 'e' || position === 'w'
-          ? 'translateY(-50%) scale(1.2)'
-          : 'scale(1.3)';
-        handle.style.background = 'rgba(37, 99, 235, 1)';
+      handle.addEventListener("mouseenter", () => {
+        handle.style.transform =
+          position === "n" || position === "s"
+            ? "translateX(-50%) scale(1.2)"
+            : position === "e" || position === "w"
+            ? "translateY(-50%) scale(1.2)"
+            : "scale(1.3)";
+        handle.style.background = "rgba(37, 99, 235, 1)";
       });
-      
-      handle.addEventListener('mouseleave', () => {
+
+      handle.addEventListener("mouseleave", () => {
         if (!wrapper.dataset.resizing) {
-          handle.style.transform = position === 'n' || position === 's' 
-            ? 'translateX(-50%)' 
-            : position === 'e' || position === 'w'
-            ? 'translateY(-50%)'
-            : '';
-          handle.style.background = 'rgba(37, 99, 235, 0.9)';
+          handle.style.transform =
+            position === "n" || position === "s"
+              ? "translateX(-50%)"
+              : position === "e" || position === "w"
+              ? "translateY(-50%)"
+              : "";
+          handle.style.background = "rgba(37, 99, 235, 0.9)";
         }
       });
 
@@ -416,25 +473,27 @@ export default function CreateNote() {
     });
 
     // Show/hide handles and border on hover
-    wrapper.addEventListener('mouseenter', () => {
-      wrapper.style.border = '2px solid rgba(37, 99, 235, 0.5)';
-      Object.values(handleElements).forEach(h => h.style.display = 'block');
+    wrapper.addEventListener("mouseenter", () => {
+      wrapper.style.border = "2px solid rgba(37, 99, 235, 0.5)";
+      Object.values(handleElements).forEach((h) => (h.style.display = "block"));
     });
-    
-    wrapper.addEventListener('mouseleave', () => {
+
+    wrapper.addEventListener("mouseleave", () => {
       if (!wrapper.dataset.resizing) {
-        wrapper.style.border = '2px solid transparent';
-        Object.values(handleElements).forEach(h => h.style.display = 'none');
+        wrapper.style.border = "2px solid transparent";
+        Object.values(handleElements).forEach(
+          (h) => (h.style.display = "none")
+        );
       }
     });
 
     // Resize functionality for all handles
     Object.entries(handleElements).forEach(([position, handle]) => {
-      handle.addEventListener('mousedown', (e) => {
+      handle.addEventListener("mousedown", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        wrapper.dataset.resizing = 'true';
-        
+        wrapper.dataset.resizing = "true";
+
         const startX = e.clientX;
         const startY = e.clientY;
         const startWidth = img.offsetWidth;
@@ -445,15 +504,15 @@ export default function CreateNote() {
           let newWidth = startWidth;
           let newHeight = startHeight;
 
-          if (position.includes('e')) {
+          if (position.includes("e")) {
             newWidth = startWidth + (e.clientX - startX);
-          } else if (position.includes('w')) {
+          } else if (position.includes("w")) {
             newWidth = startWidth - (e.clientX - startX);
           }
 
-          if (position.includes('s')) {
+          if (position.includes("s")) {
             newHeight = startHeight + (e.clientY - startY);
-          } else if (position.includes('n')) {
+          } else if (position.includes("n")) {
             newHeight = startHeight - (e.clientY - startY);
           }
 
@@ -464,26 +523,31 @@ export default function CreateNote() {
             } else {
               newWidth = newHeight * aspectRatio;
             }
-          } else if (position === 'e' || position === 'w') {
+          } else if (position === "e" || position === "w") {
             newHeight = newWidth / aspectRatio;
-          } else if (position === 'n' || position === 's') {
+          } else if (position === "n" || position === "s") {
             newWidth = newHeight * aspectRatio;
           }
 
           // Apply constraints
-          if (newWidth >= 100 && newWidth <= contentRef.current.offsetWidth - 20) {
-            img.style.width = newWidth + 'px';
-            img.style.height = 'auto';
+          if (
+            newWidth >= 100 &&
+            newWidth <= contentRef.current.offsetWidth - 20
+          ) {
+            img.style.width = newWidth + "px";
+            img.style.height = "auto";
           }
         };
 
         const onMouseUp = () => {
           delete wrapper.dataset.resizing;
-          wrapper.style.border = '2px solid transparent';
-          Object.values(handleElements).forEach(h => h.style.display = 'none');
-          document.removeEventListener('mousemove', onMouseMove);
-          document.removeEventListener('mouseup', onMouseUp);
-          
+          wrapper.style.border = "2px solid transparent";
+          Object.values(handleElements).forEach(
+            (h) => (h.style.display = "none")
+          );
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+
           // Update form data
           if (contentRef.current) {
             setFormData((prev) => ({
@@ -493,8 +557,8 @@ export default function CreateNote() {
           }
         };
 
-        document.addEventListener('mousemove', onMouseMove);
-        document.addEventListener('mouseup', onMouseUp);
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
       });
     });
 
@@ -504,79 +568,88 @@ export default function CreateNote() {
     let dragThreshold = 5; // pixels to move before initiating drag
     let dropIndicator = null;
 
-    img.addEventListener('mousedown', (e) => {
+    img.addEventListener("mousedown", (e) => {
       // Don't interfere with resize handles
-      if (e.target.classList.contains('resize-handle')) return;
-      
+      if (e.target.classList.contains("resize-handle")) return;
+
       e.preventDefault();
       dragStartX = e.clientX;
       dragStartY = e.clientY;
-      
+
       const onMouseMove = (moveEvent) => {
         const deltaX = Math.abs(moveEvent.clientX - dragStartX);
         const deltaY = Math.abs(moveEvent.clientY - dragStartY);
-        
+
         // Start dragging if moved beyond threshold
         if (!isDragging && (deltaX > dragThreshold || deltaY > dragThreshold)) {
           isDragging = true;
-          wrapper.style.opacity = '0.5';
-          wrapper.style.cursor = 'grabbing';
-          wrapper.style.pointerEvents = 'none'; // Allow mouse to pass through during drag
-          
+          wrapper.style.opacity = "0.5";
+          wrapper.style.cursor = "grabbing";
+          wrapper.style.pointerEvents = "none"; // Allow mouse to pass through during drag
+
           // Create drop indicator (cursor-like vertical line)
-          dropIndicator = document.createElement('span');
-          dropIndicator.style.position = 'absolute';
-          dropIndicator.style.width = '2px';
-          dropIndicator.style.height = '20px';
-          dropIndicator.style.backgroundColor = 'rgba(37, 99, 235, 0.9)';
-          dropIndicator.style.boxShadow = '0 0 8px rgba(37, 99, 235, 0.5)';
-          dropIndicator.style.pointerEvents = 'none';
-          dropIndicator.style.zIndex = '1000';
+          dropIndicator = document.createElement("span");
+          dropIndicator.style.position = "absolute";
+          dropIndicator.style.width = "2px";
+          dropIndicator.style.height = "20px";
+          dropIndicator.style.backgroundColor = "rgba(37, 99, 235, 0.9)";
+          dropIndicator.style.boxShadow = "0 0 8px rgba(37, 99, 235, 0.5)";
+          dropIndicator.style.pointerEvents = "none";
+          dropIndicator.style.zIndex = "1000";
           document.body.appendChild(dropIndicator);
         }
-        
+
         if (isDragging && contentRef.current && dropIndicator) {
           // Position drop indicator at mouse cursor
-          dropIndicator.style.left = moveEvent.clientX + 'px';
-          dropIndicator.style.top = moveEvent.clientY + 'px';
+          dropIndicator.style.left = moveEvent.clientX + "px";
+          dropIndicator.style.top = moveEvent.clientY + "px";
         }
       };
-      
+
       const onMouseUp = (upEvent) => {
         if (isDragging && contentRef.current) {
           // Get the exact position where mouse was released (cross-browser)
           let range;
-          
+
           if (document.caretRangeFromPoint) {
             // Chrome, Safari
-            range = document.caretRangeFromPoint(upEvent.clientX, upEvent.clientY);
+            range = document.caretRangeFromPoint(
+              upEvent.clientX,
+              upEvent.clientY
+            );
           } else if (document.caretPositionFromPoint) {
             // Firefox
-            const position = document.caretPositionFromPoint(upEvent.clientX, upEvent.clientY);
+            const position = document.caretPositionFromPoint(
+              upEvent.clientX,
+              upEvent.clientY
+            );
             if (position) {
               range = document.createRange();
               range.setStart(position.offsetNode, position.offset);
               range.collapse(true);
             }
           }
-          
+
           if (range) {
             // Remove wrapper from current position
             const parent = wrapper.parentNode;
             if (parent) {
               wrapper.remove();
             }
-            
+
             // Insert at new position
             try {
               range.insertNode(wrapper);
-              
+
               // Add space after if needed
-              if (!wrapper.nextSibling || wrapper.nextSibling.nodeType !== Node.TEXT_NODE) {
-                const space = document.createTextNode('\u00A0');
+              if (
+                !wrapper.nextSibling ||
+                wrapper.nextSibling.nodeType !== Node.TEXT_NODE
+              ) {
+                const space = document.createTextNode("\u00A0");
                 wrapper.parentNode.insertBefore(space, wrapper.nextSibling);
               }
-              
+
               // Update form data
               setFormData((prev) => ({
                 ...prev,
@@ -588,55 +661,57 @@ export default function CreateNote() {
             }
           }
         }
-        
+
         // Cleanup
         if (dropIndicator && dropIndicator.parentNode) {
           dropIndicator.remove();
         }
-        wrapper.style.opacity = '1';
-        wrapper.style.cursor = '';
-        wrapper.style.pointerEvents = '';
+        wrapper.style.opacity = "1";
+        wrapper.style.cursor = "";
+        wrapper.style.pointerEvents = "";
         isDragging = false;
         dropIndicator = null;
-        
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
+
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
       };
-      
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
+
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
     });
 
-    img.style.cursor = 'grab';
+    img.style.cursor = "grab";
 
     // Click to select image
-    wrapper.addEventListener('click', (e) => {
+    wrapper.addEventListener("click", (e) => {
       e.stopPropagation();
       wrapper.focus();
-      wrapper.style.border = '2px solid rgba(37, 99, 235, 0.8)';
-      wrapper.style.outline = 'none';
+      wrapper.style.border = "2px solid rgba(37, 99, 235, 0.8)";
+      wrapper.style.outline = "none";
     });
 
     // Handle focus/blur for selection visual feedback
-    wrapper.addEventListener('focus', () => {
-      wrapper.style.border = '2px solid rgba(37, 99, 235, 0.8)';
-      Object.values(handleElements).forEach(h => h.style.display = 'block');
+    wrapper.addEventListener("focus", () => {
+      wrapper.style.border = "2px solid rgba(37, 99, 235, 0.8)";
+      Object.values(handleElements).forEach((h) => (h.style.display = "block"));
     });
 
-    wrapper.addEventListener('blur', () => {
+    wrapper.addEventListener("blur", () => {
       if (!wrapper.dataset.resizing) {
-        wrapper.style.border = '2px solid transparent';
-        Object.values(handleElements).forEach(h => h.style.display = 'none');
+        wrapper.style.border = "2px solid transparent";
+        Object.values(handleElements).forEach(
+          (h) => (h.style.display = "none")
+        );
       }
     });
 
     // Delete image on Delete or Backspace key
-    wrapper.addEventListener('keydown', (e) => {
-      if (e.key === 'Delete' || e.key === 'Backspace') {
+    wrapper.addEventListener("keydown", (e) => {
+      if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         e.stopPropagation();
         wrapper.remove();
-        
+
         // Update form data
         if (contentRef.current) {
           setFormData((prev) => ({
@@ -655,18 +730,18 @@ export default function CreateNote() {
     if (!contentRef.current) return;
 
     const wrapper = createResizableImage(imageSrc);
-    
+
     contentRef.current.focus();
     const selection = window.getSelection();
     if (selection.rangeCount > 0) {
       const range = selection.getRangeAt(0);
       range.deleteContents();
       range.insertNode(wrapper);
-      
+
       // Add a line break after image wrapper
-      const br = document.createElement('br');
+      const br = document.createElement("br");
       wrapper.parentNode.insertBefore(br, wrapper.nextSibling);
-      
+
       // Update form data
       setFormData((prev) => ({
         ...prev,
@@ -677,16 +752,16 @@ export default function CreateNote() {
 
   const handleImageInsert = (e) => {
     const file = e.target.files?.[0];
-    if (!file || !file.type.startsWith('image/')) return;
+    if (!file || !file.type.startsWith("image/")) return;
 
     const reader = new FileReader();
     reader.onload = (event) => {
       insertImageIntoEditor(event.target.result);
     };
     reader.readAsDataURL(file);
-    
+
     // Reset input
-    e.target.value = '';
+    e.target.value = "";
   };
 
   const handlePaste = (e) => {
@@ -694,7 +769,7 @@ export default function CreateNote() {
     if (!items) return;
 
     for (let i = 0; i < items.length; i++) {
-      if (items[i].type.startsWith('image/')) {
+      if (items[i].type.startsWith("image/")) {
         e.preventDefault();
         const file = items[i].getAsFile();
         if (file) {
@@ -713,7 +788,7 @@ export default function CreateNote() {
     e.preventDefault();
     e.stopPropagation();
     if (contentRef.current) {
-      contentRef.current.style.borderColor = 'rgba(37, 99, 235, 0.5)';
+      contentRef.current.style.borderColor = "rgba(37, 99, 235, 0.5)";
     }
   };
 
@@ -721,7 +796,7 @@ export default function CreateNote() {
     e.preventDefault();
     e.stopPropagation();
     if (contentRef.current) {
-      contentRef.current.style.borderColor = '';
+      contentRef.current.style.borderColor = "";
     }
   };
 
@@ -729,13 +804,13 @@ export default function CreateNote() {
     e.preventDefault();
     e.stopPropagation();
     if (contentRef.current) {
-      contentRef.current.style.borderColor = '';
+      contentRef.current.style.borderColor = "";
     }
 
     const files = e.dataTransfer?.files;
     if (files && files.length > 0) {
       const file = files[0];
-      if (file.type.startsWith('image/')) {
+      if (file.type.startsWith("image/")) {
         const reader = new FileReader();
         reader.onload = (event) => {
           insertImageIntoEditor(event.target.result);
@@ -751,19 +826,19 @@ export default function CreateNote() {
         ...prev,
         content: contentRef.current.innerHTML,
       }));
-      
+
       // Make list items draggable
-      const listItems = contentRef.current.querySelectorAll('li');
-      listItems.forEach(li => {
-        if (!li.hasAttribute('draggable')) {
-          li.setAttribute('draggable', 'true');
-          li.style.cursor = 'move';
-          
-          li.addEventListener('dragstart', handleListItemDragStart);
-          li.addEventListener('dragover', handleListItemDragOver);
-          li.addEventListener('drop', handleListItemDrop);
-          li.addEventListener('dragend', handleListItemDragEnd);
-          li.addEventListener('dragleave', handleListItemDragLeave);
+      const listItems = contentRef.current.querySelectorAll("li");
+      listItems.forEach((li) => {
+        if (!li.hasAttribute("draggable")) {
+          li.setAttribute("draggable", "true");
+          li.style.cursor = "move";
+
+          li.addEventListener("dragstart", handleListItemDragStart);
+          li.addEventListener("dragover", handleListItemDragOver);
+          li.addEventListener("drop", handleListItemDrop);
+          li.addEventListener("dragend", handleListItemDragEnd);
+          li.addEventListener("dragleave", handleListItemDragLeave);
         }
       });
     }
@@ -774,41 +849,50 @@ export default function CreateNote() {
 
   const handleListItemDragStart = (e) => {
     draggedListItem = e.currentTarget;
-    e.currentTarget.style.opacity = '0.5';
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/html', e.currentTarget.innerHTML);
+    e.currentTarget.style.opacity = "0.5";
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/html", e.currentTarget.innerHTML);
   };
 
   const handleListItemDragOver = (e) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    
+    e.dataTransfer.dropEffect = "move";
+
     const targetLi = e.currentTarget;
-    if (targetLi && targetLi !== draggedListItem && targetLi.nodeName === 'LI') {
-      targetLi.style.borderTop = '2px solid #2563eb';
+    if (
+      targetLi &&
+      targetLi !== draggedListItem &&
+      targetLi.nodeName === "LI"
+    ) {
+      targetLi.style.borderTop = "2px solid #2563eb";
     }
   };
 
   const handleListItemDragLeave = (e) => {
     const targetLi = e.currentTarget;
-    if (targetLi && targetLi.nodeName === 'LI') {
-      targetLi.style.borderTop = '';
+    if (targetLi && targetLi.nodeName === "LI") {
+      targetLi.style.borderTop = "";
     }
   };
 
   const handleListItemDrop = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    
+
     const targetLi = e.currentTarget;
-    targetLi.style.borderTop = '';
-    
-    if (draggedListItem && targetLi && targetLi !== draggedListItem && targetLi.nodeName === 'LI') {
+    targetLi.style.borderTop = "";
+
+    if (
+      draggedListItem &&
+      targetLi &&
+      targetLi !== draggedListItem &&
+      targetLi.nodeName === "LI"
+    ) {
       const parent = targetLi.parentNode;
-      
+
       // Insert dragged item before target
       parent.insertBefore(draggedListItem, targetLi);
-      
+
       // Update form data
       setFormData((prev) => ({
         ...prev,
@@ -818,70 +902,78 @@ export default function CreateNote() {
   };
 
   const handleListItemDragEnd = (e) => {
-    e.currentTarget.style.opacity = '1';
-    
+    e.currentTarget.style.opacity = "1";
+
     // Clear all border indicators
     if (contentRef.current) {
-      const allListItems = contentRef.current.querySelectorAll('li');
-      allListItems.forEach(li => {
-        li.style.borderTop = '';
+      const allListItems = contentRef.current.querySelectorAll("li");
+      allListItems.forEach((li) => {
+        li.style.borderTop = "";
       });
     }
-    
+
     draggedListItem = null;
   };
 
   const handleKeyDown = (e) => {
     // Handle image deletion
     const selection = window.getSelection();
-    if ((e.key === 'Delete' || e.key === 'Backspace') && selection.rangeCount > 0) {
+    if (
+      (e.key === "Delete" || e.key === "Backspace") &&
+      selection.rangeCount > 0
+    ) {
       const range = selection.getRangeAt(0);
       const node = range.startContainer;
-      
+
       // Check if we're at an image wrapper or its parent
       let imageWrapper = null;
-      
+
       // Check if node is the wrapper itself
-      if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('image-wrapper')) {
+      if (
+        node.nodeType === Node.ELEMENT_NODE &&
+        node.classList?.contains("image-wrapper")
+      ) {
         imageWrapper = node;
       }
       // Check if parent is the wrapper
-      else if (node.parentElement?.classList?.contains('image-wrapper')) {
+      else if (node.parentElement?.classList?.contains("image-wrapper")) {
         imageWrapper = node.parentElement;
       }
       // Check if any ancestor is the wrapper
       else {
-        let current = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+        let current =
+          node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
         while (current && current !== contentRef.current) {
-          if (current.classList?.contains('image-wrapper')) {
+          if (current.classList?.contains("image-wrapper")) {
             imageWrapper = current;
             break;
           }
           current = current.parentElement;
         }
       }
-      
+
       // Also check if cursor is right before/after an image wrapper
       if (!imageWrapper) {
-        if (e.key === 'Delete') {
+        if (e.key === "Delete") {
           // Check next sibling
           const nextNode = range.endContainer.childNodes?.[range.endOffset];
-          if (nextNode?.classList?.contains('image-wrapper')) {
+          if (nextNode?.classList?.contains("image-wrapper")) {
             imageWrapper = nextNode;
           }
-        } else if (e.key === 'Backspace') {
+        } else if (e.key === "Backspace") {
           // Check previous sibling
-          const prevNode = range.startContainer.childNodes?.[range.startOffset - 1];
-          if (prevNode?.classList?.contains('image-wrapper')) {
+          const prevNode =
+            range.startContainer.childNodes?.[range.startOffset - 1];
+          if (prevNode?.classList?.contains("image-wrapper")) {
             imageWrapper = prevNode;
           }
         }
       }
-      
+
       if (imageWrapper) {
         e.preventDefault();
         imageWrapper.remove();
-        
+
         // Update form data
         setFormData((prev) => ({
           ...prev,
@@ -938,13 +1030,80 @@ export default function CreateNote() {
     };
 
     document.addEventListener("mousedown", handleClickOutside);
+
+    // Warn before leaving page if there's unsaved content
+    const handleBeforeUnload = (e) => {
+      const hasContent =
+        formData.title.trim() ||
+        (contentRef.current && contentRef.current.textContent.trim()) ||
+        attachments.length > 0;
+
+      if (hasContent && !isSubmitting) {
+        e.preventDefault();
+        e.returnValue = "";
+        return "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  }, [formData.content]);
+  }, [formData.title, formData.content, attachments, isSubmitting]);
+
+  const normalizeTagsString = (str) => {
+    if (!str) return { cleanString: "", tags: [], invalid: [] };
+
+    // Replace commas with spaces and split by whitespace
+    const tokens = str.replace(/,/g, " ").trim().split(/\s+/);
+    const validRegex = /^#[A-Za-z0-9_]+$/;
+
+    const tags = [];
+    const invalid = [];
+
+    tokens.forEach((t) => {
+      if (!t) return;
+      let token = t.trim();
+
+      // Ensure it starts with #
+      if (!token.startsWith("#")) token = `#${token}`;
+
+      // Remove any unexpected characters except #, letters, numbers and underscore
+      token = token.replace(/[^#A-Za-z0-9_]/g, "");
+
+      if (token.length < 2) {
+        invalid.push(t);
+        return;
+      }
+
+      if (validRegex.test(token)) {
+        if (!tags.includes(token)) tags.push(token);
+      } else {
+        invalid.push(t);
+      }
+    });
+
+    return { cleanString: tags.join(" "), tags, invalid };
+  };
+
+  const handleTagsBlur = (e) => {
+    const { cleanString, tags, invalid } = normalizeTagsString(e.target.value);
+    setFormData((prev) => ({ ...prev, tags: cleanString }));
+    setParsedTags(tags);
+    setTagError(invalid.length ? `Invalid tags: ${invalid.join(", ")}` : "");
+  };
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
+
+    if (name === "tags") {
+      const { tags, invalid } = normalizeTagsString(value);
+      setParsedTags(tags);
+      setTagError(invalid.length ? `Invalid tags: ${invalid.join(", ")}` : "");
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: value,
@@ -1062,32 +1221,71 @@ export default function CreateNote() {
       : formData.content;
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      // Validate required fields
+      if (!formData.title.trim()) {
+        alert("Please enter a title for your note");
+        setIsSubmitting(false);
+        return;
+      }
 
-      // In a real app, you would:
-      // 1. Upload attachments to storage service
-      // 2. Create note with metadata
-      // 3. Handle authentication
+      // Prepare note data
+      const { tags: finalTags, invalid } = normalizeTagsString(formData.tags);
+      if (invalid.length) {
+        alert(`Invalid tags: ${invalid.join(", ")}`);
+        setIsSubmitting(false);
+        return;
+      }
 
-      console.log("Note data:", {
-        ...formData,
-        content: finalContent, // Use the HTML content from the editor
-        tags: formData.tags
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter((tag) => tag),
-        attachments: attachments.map((att) => ({
-          name: att.name,
-          size: att.size,
-          type: att.type,
-        })),
-      });
+      // Upload attachments (if any) and collect upload metadata
+      let uploadedAttachments = [];
+
+      if (attachments.length > 0) {
+        try {
+          // Use StorageContext helper to upload multiple files
+          const files = attachments.map((att) => att.file);
+          const uploadPath = `users/${user.uid}/notes/${Date.now()}`;
+
+          const results = await uploadMultipleFiles(
+            files,
+            uploadPath,
+            (index, progress) => {
+              // Optionally you could update local attachment progress state here
+              // setAttachments(prev => prev.map((a,i)=> i===index ? { ...a, progress } : a));
+            }
+          );
+
+          uploadedAttachments = results.map((res, idx) => ({
+            name: attachments[idx].name,
+            size: res.size || attachments[idx].size,
+            type: res.type || attachments[idx].type,
+            downloadURL: res.downloadURL,
+            fullPath: res.fullPath,
+          }));
+        } catch (err) {
+          console.error("Attachment upload error:", err);
+          alert("Failed to upload attachments: " + (err.message || err));
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      const noteData = {
+        title: formData.title.trim(),
+        content: finalContent,
+        tags: finalTags.map((tag) => tag.replace(/^#/, "")),
+        attachments: uploadedAttachments,
+      };
+
+      // Create note in Firebase
+      await createNote(noteData);
+
+      console.log("Note created successfully!");
 
       // Redirect to dashboard
       router.push("/dashboard");
     } catch (error) {
       console.error("Error creating note:", error);
+      alert("Failed to create note. Please try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -1422,34 +1620,46 @@ export default function CreateNote() {
                   <div className="absolute top-full left-0 mt-1 bg-white border border-gray-300 rounded-lg shadow-lg z-50 py-1 w-48">
                     <button
                       type="button"
-                      onClick={() => applyListStyle('none')}
+                      onClick={() => applyListStyle("none")}
                       className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center space-x-3 text-sm text-black ${
-                        getCurrentListType() === null ? 'bg-blue-100' : ''
+                        getCurrentListType() === null ? "bg-blue-100" : ""
                       }`}
                     >
-                      <svg className="w-4 h-4 text-black" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                      <svg
+                        className="w-4 h-4 text-black"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M3 5a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 15a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                       <span>None</span>
                     </button>
                     <div className="border-t border-gray-200 my-1"></div>
                     <button
                       type="button"
-                      onClick={() => applyListStyle('bullet')}
+                      onClick={() => applyListStyle("bullet")}
                       className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center space-x-3 text-sm text-black ${
-                        getCurrentListType() === 'bullet' ? 'bg-blue-100' : ''
+                        getCurrentListType() === "bullet" ? "bg-blue-100" : ""
                       }`}
                     >
-                      <svg className="w-4 h-4 text-black" fill="currentColor" viewBox="0 0 20 20">
+                      <svg
+                        className="w-4 h-4 text-black"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
                         <circle cx="4" cy="10" r="2" />
                       </svg>
                       <span>Bullet List</span>
                     </button>
                     <button
                       type="button"
-                      onClick={() => applyListStyle('numbered')}
+                      onClick={() => applyListStyle("numbered")}
                       className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center space-x-3 text-sm text-black ${
-                        getCurrentListType() === 'numbered' ? 'bg-blue-100' : ''
+                        getCurrentListType() === "numbered" ? "bg-blue-100" : ""
                       }`}
                     >
                       <span className="w-4 text-center font-semibold">1.</span>
@@ -1457,9 +1667,11 @@ export default function CreateNote() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => applyListStyle('lower-alpha')}
+                      onClick={() => applyListStyle("lower-alpha")}
                       className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center space-x-3 text-sm text-black ${
-                        getCurrentListType() === 'lower-alpha' ? 'bg-blue-100' : ''
+                        getCurrentListType() === "lower-alpha"
+                          ? "bg-blue-100"
+                          : ""
                       }`}
                     >
                       <span className="w-4 text-center font-semibold">a.</span>
@@ -1467,9 +1679,11 @@ export default function CreateNote() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => applyListStyle('upper-alpha')}
+                      onClick={() => applyListStyle("upper-alpha")}
                       className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center space-x-3 text-sm text-black ${
-                        getCurrentListType() === 'upper-alpha' ? 'bg-blue-100' : ''
+                        getCurrentListType() === "upper-alpha"
+                          ? "bg-blue-100"
+                          : ""
                       }`}
                     >
                       <span className="w-4 text-center font-semibold">A.</span>
@@ -1570,13 +1784,34 @@ export default function CreateNote() {
               name="tags"
               value={formData.tags}
               onChange={handleInputChange}
-              placeholder="work, personal, important (separate with commas)"
+              onBlur={handleTagsBlur}
+              placeholder="#work #personal #important (separate with spaces)"
               className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 placeholder-black"
             />
             <p className="mt-1 text-sm text-gray-500">
-              Add tags to organize your notes. Separate multiple tags with
-              commas.
+              Rules: each tag must start with a <code>#</code>, tags separated
+              by a space, no spaces inside a tag, underscores (_) allowed, and
+              tags must be unique.
             </p>
+
+            {/* Parsed tags preview */}
+            {parsedTags.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {parsedTags.map((t) => (
+                  <span
+                    key={t}
+                    className="inline-flex items-center px-2 py-1 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-100"
+                  >
+                    {t}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Error */}
+            {tagError && (
+              <p className="mt-2 text-sm text-red-600">{tagError}</p>
+            )}
           </div>
 
           {/* File Upload */}
@@ -1751,3 +1986,5 @@ export default function CreateNote() {
     </div>
   );
 }
+
+export default withAuth(CreateNote);

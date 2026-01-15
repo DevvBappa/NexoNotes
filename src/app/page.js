@@ -1,6 +1,33 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function LandingPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  // Redirect to dashboard if user is already logged in
+  useEffect(() => {
+    if (!loading && user) {
+      router.push("/dashboard");
+    }
+  }, [user, loading, router]);
+
+  // Show nothing while checking auth or redirecting
+  if (loading || user) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <main className="flex min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Header */}
@@ -78,4 +105,3 @@ export default function LandingPage() {
     </main>
   );
 }
-

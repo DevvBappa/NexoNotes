@@ -1,10 +1,61 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function LoginPage() {
+  const [formData, setFormData] = useState({
+    email: "",
+    password: "",
+  });
+  const [rememberMe, setRememberMe] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const { login, user, error, clearError } = useAuth();
+  const router = useRouter();
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      router.push("/dashboard");
+    }
+  }, [user, router]);
+
+  // Clear error when component unmounts
+  useEffect(() => {
+    return () => clearError();
+  }, [clearError]);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+    // Clear error when user starts typing
+    if (error) clearError();
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!formData.email || !formData.password) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      await login(formData.email, formData.password, rememberMe);
+      router.push("/dashboard");
+    } catch (error) {
+      console.error("Login error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 animate-fade-in">
@@ -26,7 +77,17 @@ export default function LoginPage() {
         </div>
 
         {/* Login Form */}
-        <form className="space-y-4 animate-slide-up animation-delay-300">
+        <form
+          onSubmit={handleSubmit}
+          className="space-y-4 animate-slide-up animation-delay-300"
+        >
+          {/* Error Message */}
+          {error && (
+            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
+              <p className="text-red-700 text-sm">{error}</p>
+            </div>
+          )}
+
           <div className="group">
             <label
               htmlFor="email"
@@ -38,6 +99,8 @@ export default function LoginPage() {
               type="email"
               id="email"
               name="email"
+              value={formData.email}
+              onChange={handleChange}
               required
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-blue-400 transition-all duration-200 placeholder-black"
               placeholder="Enter your email"
@@ -56,6 +119,8 @@ export default function LoginPage() {
                 type={showPassword ? "text" : "password"}
                 id="password"
                 name="password"
+                value={formData.password}
+                onChange={handleChange}
                 required
                 className="mt-1 block w-full px-3 py-2 pr-10 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 hover:border-blue-400 transition-all duration-200 placeholder-black"
                 placeholder="Enter your password"
@@ -110,11 +175,13 @@ export default function LoginPage() {
                 id="remember-me"
                 name="remember-me"
                 type="checkbox"
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded cursor-pointer"
               />
               <label
                 htmlFor="remember-me"
-                className="ml-2 block text-sm text-gray-700"
+                className="ml-2 block text-sm text-gray-700 cursor-pointer"
               >
                 Remember me
               </label>
@@ -128,9 +195,10 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            className="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 hover:scale-105 hover:shadow-lg transition-all duration-300 transform active:scale-95"
+            disabled={loading || !formData.email || !formData.password}
+            className="w-full py-2 px-4 bg-blue-600 text-white font-semibold rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 hover:scale-105 hover:shadow-lg transition-all duration-300 transform active:scale-95 disabled:bg-gray-400 disabled:cursor-not-allowed disabled:transform-none"
           >
-            Sign In
+            {loading ? "Signing In..." : "Sign In"}
           </button>
         </form>
 
