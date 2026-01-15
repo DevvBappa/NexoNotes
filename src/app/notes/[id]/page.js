@@ -6,7 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNotes } from "@/contexts/NotesContext";
 import { withAuth } from "@/components/auth/ProtectedRoute";
-import html2pdf from "html2pdf.js";
+// html2pdf is loaded dynamically inside the export function to avoid server-side eval errors (e.g., `self is not defined`).
 
 function NoteDetailPage() {
   const params = useParams();
@@ -233,6 +233,8 @@ function NoteDetailPage() {
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
       };
 
+      // Dynamically import html2pdf only on the client to avoid `self`/SSR issues
+      const { default: html2pdf } = await import("html2pdf.js");
       await html2pdf().set(opt).from(pdfContainer).save();
 
       // Clean up
@@ -1325,8 +1327,7 @@ function NoteDetailPage() {
                 ))}
               </div>
               <p className="mt-3 text-xs text-gray-500 italic">
-                Attachments are stored in Firebase Storage. Click "Open" to view
-                or download a file.
+                Attachments are stored in Firebase Storage. Click Open to view or download a file.
               </p>
             </div>
           )}
