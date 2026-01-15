@@ -16,28 +16,26 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+let app = null;
+let auth = null;
+let db = null;
+let storage = null;
+let analytics = null;
 
-// Initialize Firebase Authentication and get a reference to the service
-export const auth = getAuth(app);
+// Only initialize Firebase on the client (avoids server-side errors during build/prerender)
+if (typeof window !== "undefined") {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  db = getFirestore(app);
+  storage = getStorage(app);
 
-// Initialize Cloud Firestore and get a reference to the service
-export const db = getFirestore(app);
+  // Initialize Analytics if supported
+  (async () => {
+    if (await isSupported()) {
+      analytics = getAnalytics(app);
+    }
+  })();
+}
 
-// Initialize Cloud Storage and get a reference to the service
-export const storage = getStorage(app);
-
-// Initialize Analytics (only in browser environment)
-export const analytics =
-  typeof window !== "undefined"
-    ? (async () => {
-        if (await isSupported()) {
-          return getAnalytics(app);
-        }
-        return null;
-      })()
-    : null;
-
-// Export the Firebase app instance
+export { auth, db, storage, analytics };
 export default app;
