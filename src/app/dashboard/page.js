@@ -200,8 +200,6 @@ function Dashboard() {
     onClear,
     totalCount,
   }) {
-    if (!pos.visible) return null;
-
     const contentRef = useRef(null);
 
     // Rely on native scrolling and CSS (`overflow-y-auto` + `overscroll-behavior: contain`)
@@ -212,6 +210,8 @@ function Dashboard() {
       const el = contentRef.current;
       return () => {};
     }, []);
+
+    if (!pos?.visible) return null;
 
     return createPortal(
       <div
