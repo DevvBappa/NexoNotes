@@ -16,28 +16,25 @@ const firebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Only initialize Firebase in the browser and when API key is present
+const isBrowser = typeof window !== "undefined";
+const hasApiKey = Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY);
 
-// Initialize Firebase Authentication and get a reference to the service
-export const auth = getAuth(app);
+const app = (isBrowser && hasApiKey) ? initializeApp(firebaseConfig) : null;
 
-// Initialize Cloud Firestore and get a reference to the service
-export const db = getFirestore(app);
+// Export client-side service instances if initialized, otherwise export nulls
+export const auth = app ? getAuth(app) : null;
+export const db = app ? getFirestore(app) : null;
+export const storage = app ? getStorage(app) : null;
 
-// Initialize Cloud Storage and get a reference to the service
-export const storage = getStorage(app);
+export const analytics = (isBrowser && app)
+  ? (async () => {
+      if (await isSupported()) {
+        return getAnalytics(app);
+      }
+      return null;
+    })()
+  : null;
 
-// Initialize Analytics (only in browser environment)
-export const analytics =
-  typeof window !== "undefined"
-    ? (async () => {
-        if (await isSupported()) {
-          return getAnalytics(app);
-        }
-        return null;
-      })()
-    : null;
-
-// Export the Firebase app instance
+// Export the Firebase app instance (may be null during SSR/build)
 export default app;
