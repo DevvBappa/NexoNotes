@@ -29,8 +29,36 @@ To learn more about Next.js, take a look at the following resources:
 
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-## Deploy on Vercel
+## Deploy on Vercel ✅
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+This project is ready for deployment on Vercel. Follow these steps:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Push your repository to GitHub (or GitLab/Bitbucket).
+2. Go to https://vercel.com and import the repository (New Project → Import Git Repository).
+3. In the Vercel dashboard, set the following Environment Variables (copy values from your Firebase project):
+
+   - `NEXT_PUBLIC_FIREBASE_API_KEY`
+   - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
+   - `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+   - `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
+   - `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+   - `NEXT_PUBLIC_FIREBASE_APP_ID`
+   - `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID`
+
+   Use the **Production** environment for production values.
+
+4. Verify Build & Output settings (Vercel usually auto-detects Next.js):
+   - Build Command: `npm run build`
+   - Output Directory: (leave blank; Vercel detects Next.js automatically)
+
+5. (Optional) Set the Node.js version in Vercel to **18+** if you need to pin a Node version.
+
+6. Deploy. Vercel will run the production build and publish your site.
+
+Notes:
+
+- For local development, copy `.env.example` to `.env.local` and fill in your Firebase variables (do NOT commit `.env.local`).
+- If you have any issues during deploy, check the Vercel build logs and ensure environment variables are set correctly.
+
+See the Next.js docs for more details: https://nextjs.org/docs/deployment
+

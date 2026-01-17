@@ -1327,7 +1327,8 @@ function NoteDetailPage() {
                 ))}
               </div>
               <p className="mt-3 text-xs text-gray-500 italic">
-                Attachments are stored in Firebase Storage. Click Open to view or download a file.
+                Attachments are stored in Firebase Storage. Click &quot;Open&quot; to view
+                or download a file.
               </p>
             </div>
           )}
