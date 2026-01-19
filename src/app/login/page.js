@@ -12,6 +12,7 @@ export default function LoginPage() {
   });
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState(null);
   const [showPassword, setShowPassword] = useState(false);
 
   const { login, user, error, clearError } = useAuth();
@@ -37,6 +38,7 @@ export default function LoginPage() {
     }));
     // Clear error when user starts typing
     if (error) clearError();
+    if (formError) setFormError(null);
   };
 
   const handleSubmit = async (e) => {
@@ -51,7 +53,10 @@ export default function LoginPage() {
       await login(formData.email, formData.password, rememberMe);
       router.push("/dashboard");
     } catch (error) {
+      // Show friendly message immediately (AuthContext also sets `error`)
       console.error("Login error:", error);
+      const msg = error?.friendlyMessage || error?.message || null;
+      setFormError(msg);
     } finally {
       setLoading(false);
     }
@@ -82,9 +87,9 @@ export default function LoginPage() {
           className="space-y-4 animate-slide-up animation-delay-300"
         >
           {/* Error Message */}
-          {error && (
-            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3">
-              <p className="text-red-700 text-sm">{error}</p>
+          {(formError || error) && (
+            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3" role="alert">
+              <p className="text-red-700 text-sm">{formError || error}</p>
             </div>
           )}
 

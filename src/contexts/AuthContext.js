@@ -42,7 +42,7 @@ export const AuthProvider = ({ children }) => {
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email,
-        password
+        password,
       );
       const user = userCredential.user;
 
@@ -62,7 +62,20 @@ export const AuthProvider = ({ children }) => {
 
       return user;
     } catch (error) {
-      setError(error.message);
+      // Map common Firebase Auth errors to friendly messages
+      const code = error?.code || "";
+      let message = "Registration failed. Please try again.";
+      if (code === "auth/email-already-in-use") {
+        message =
+          "This email is already in use. Try signing in or use different email.";
+      } else if (code === "auth/invalid-email") {
+        message = "The email address is invalid.";
+      } else if (code === "auth/weak-password") {
+        message = "Password is too weak. Choose a stronger password.";
+      }
+      setError(message);
+      // attach friendly message to error and rethrow for callers
+      error.friendlyMessage = message;
       throw error;
     } finally {
       setLoading(false);
@@ -85,11 +98,25 @@ export const AuthProvider = ({ children }) => {
       const userCredential = await signInWithEmailAndPassword(
         auth,
         email,
-        password
+        password,
       );
       return userCredential.user;
     } catch (error) {
-      setError(error.message);
+      const code = error?.code || "";
+      let message =
+        "Login failed. Please check your credentials and try again.";
+      if (code === "auth/user-not-found") {
+        message = "No account found with this email. Please register first.";
+      } else if (code === "auth/wrong-password") {
+        message = "Incorrect password. Try again or reset your password.";
+      } else if (code === "auth/invalid-email") {
+        message = "The email address is invalid.";
+      } else if (code === "auth/too-many-requests") {
+        message =
+          "Too many unsuccessful login attempts. Please try again later.";
+      }
+      setError(message);
+      error.friendlyMessage = message;
       throw error;
     } finally {
       setLoading(false);
@@ -141,7 +168,7 @@ export const AuthProvider = ({ children }) => {
             ...updates,
             updatedAt: new Date().toISOString(),
           },
-          { merge: true }
+          { merge: true },
         );
       }
     } catch (error) {

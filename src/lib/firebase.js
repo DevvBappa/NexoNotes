@@ -20,21 +20,22 @@ const firebaseConfig = {
 const isBrowser = typeof window !== "undefined";
 const hasApiKey = Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY);
 
-const app = (isBrowser && hasApiKey) ? initializeApp(firebaseConfig) : null;
+const app = isBrowser && hasApiKey ? initializeApp(firebaseConfig) : null;
 
 // Export client-side service instances if initialized, otherwise export nulls
 export const auth = app ? getAuth(app) : null;
 export const db = app ? getFirestore(app) : null;
 export const storage = app ? getStorage(app) : null;
 
-export const analytics = (isBrowser && app)
-  ? (async () => {
-      if (await isSupported()) {
-        return getAnalytics(app);
-      }
-      return null;
-    })()
-  : null;
+export const analytics =
+  isBrowser && app
+    ? (async () => {
+        if (await isSupported()) {
+          return getAnalytics(app);
+        }
+        return null;
+      })()
+    : null;
 
 // Export the Firebase app instance (may be null during SSR/build)
 export default app;

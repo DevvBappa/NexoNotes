@@ -36,7 +36,6 @@ This project is ready for deployment on Vercel. Follow these steps:
 1. Push your repository to GitHub (or GitLab/Bitbucket).
 2. Go to https://vercel.com and import the repository (New Project → Import Git Repository).
 3. In the Vercel dashboard, set the following Environment Variables (copy values from your Firebase project):
-
    - `NEXT_PUBLIC_FIREBASE_API_KEY`
    - `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
    - `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
@@ -61,4 +60,3 @@ Notes:
 - If you have any issues during deploy, check the Vercel build logs and ensure environment variables are set correctly.
 
 See the Next.js docs for more details: https://nextjs.org/docs/deployment
-

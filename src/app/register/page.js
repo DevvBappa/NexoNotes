@@ -16,6 +16,8 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [formErrors, setFormErrors] = useState({});
+  const [modalMessage, setModalMessage] = useState("");
+  const [showModal, setShowModal] = useState(false);
 
   const { register, user, error, clearError } = useAuth();
   const router = useRouter();
@@ -89,18 +91,31 @@ export default function RegisterPage() {
     try {
       setLoading(true);
       clearError();
-
-      await register(
+      const user = await register(
         formData.email,
         formData.password,
-        formData.displayName.trim()
+        formData.displayName.trim(),
       );
 
+      // Show success modal then redirect
+      const successMsg = "Account created successfully. Redirecting…";
+      setModalMessage(successMsg);
+      setShowModal(true);
+
       setTimeout(() => {
+        setShowModal(false);
         router.push("/dashboard");
-      }, 100);
+      }, 1200);
     } catch (error) {
       console.error("Registration error:", error);
+      // Prefer friendly message from AuthContext if available
+      const msg =
+        error?.friendlyMessage ||
+        (error?.code === "auth/email-already-in-use"
+          ? "This email is already in use. Try signing in or reset your password."
+          : error?.message || "Registration failed. Please try again.");
+      setModalMessage(msg);
+      setShowModal(true);
     } finally {
       setLoading(false);
     }
@@ -109,6 +124,26 @@ export default function RegisterPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 animate-fade-in">
       <div className="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 animate-slide-up">
+        {/* Modal popup for success / error */}
+        {showModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div
+              className="absolute inset-0 bg-black/40"
+              onClick={() => setShowModal(false)}
+            />
+            <div className="relative bg-white rounded-lg shadow-lg p-6 max-w-sm w-full z-10">
+              <p className="text-gray-800">{modalMessage}</p>
+              <div className="mt-4 text-right">
+                <button
+                  onClick={() => setShowModal(false)}
+                  className="px-3 py-1 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
         {/* Header */}
         <div className="text-center animate-fade-in-down">
           <Link

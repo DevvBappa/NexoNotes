@@ -98,7 +98,7 @@ function Dashboard() {
   const filteredTags = useMemo(() => {
     if (!tagQuery.trim()) return allTagsSorted;
     return allTagsSorted.filter((t) =>
-      t.toLowerCase().includes(tagQuery.trim().toLowerCase())
+      t.toLowerCase().includes(tagQuery.trim().toLowerCase()),
     );
   }, [allTagsSorted, tagQuery]);
 
@@ -107,7 +107,7 @@ function Dashboard() {
     console.log("Filtering - selectedTag:", selectedTag);
     console.log(
       "All notes tags:",
-      notes.map((n) => ({ title: n.title, tags: n.tags }))
+      notes.map((n) => ({ title: n.title, tags: n.tags })),
     );
 
     return notes
@@ -116,8 +116,8 @@ function Dashboard() {
           note.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           note.content?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           note.tags?.some((tag) =>
-            tag.toLowerCase().includes(searchTerm.toLowerCase())
-          )
+            tag.toLowerCase().includes(searchTerm.toLowerCase()),
+          ),
       )
       .filter((note) => {
         if (selectedTag === "") return true;
@@ -128,10 +128,10 @@ function Dashboard() {
           "tags:",
           note.tags,
           "normalized selected:",
-          normalizedSelectedTag
+          normalizedSelectedTag,
         );
         const matches = note.tags?.some(
-          (tag) => tag.replace(/^#/, "") === normalizedSelectedTag
+          (tag) => tag.replace(/^#/, "") === normalizedSelectedTag,
         );
         console.log("Matches:", matches);
         return matches;
@@ -203,12 +203,60 @@ function Dashboard() {
     const contentRef = useRef(null);
 
     // Rely on native scrolling and CSS (`overflow-y-auto` + `overscroll-behavior: contain`)
-    // Removing manual wheel/touch handlers that interfered with scroll behavior across browsers.
+    // Add wheel and touch listeners so scroll events originating in the dropdown
+    // don't bubble to the page (which can prevent the dropdown from scrolling).
     useEffect(() => {
-      // No custom listeners required — CSS handles scrolling properly for the dropdown.
-      // Keep the ref in case we want to measure or focus the content in future.
       const el = contentRef.current;
-      return () => {};
+      if (!el) return;
+
+      let touchStartY = 0;
+
+      const onWheel = (e) => {
+        const delta = e.deltaY;
+        const atTop = el.scrollTop === 0;
+        const atBottom =
+          Math.abs(el.scrollHeight - el.scrollTop - el.clientHeight) <= 1;
+
+        // If the dropdown can scroll in the direction of the wheel, stop propagation
+        // If it's at the edge, prevent default to stop the page from scrolling.
+        if ((delta < 0 && !atTop) || (delta > 0 && !atBottom)) {
+          e.stopPropagation();
+        } else {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      };
+
+      const onTouchStart = (e) => {
+        touchStartY = e.touches ? e.touches[0].clientY : 0;
+      };
+
+      const onTouchMove = (e) => {
+        const currentY = e.touches ? e.touches[0].clientY : 0;
+        const delta = touchStartY - currentY;
+        const atTop = el.scrollTop === 0;
+        const atBottom =
+          Math.abs(el.scrollHeight - el.scrollTop - el.clientHeight) <= 1;
+
+        if ((delta < 0 && !atTop) || (delta > 0 && !atBottom)) {
+          // Touch scrolling inside dropdown - prevent it from bubbling to parent
+          e.stopPropagation();
+        } else {
+          // At edge - prevent default so page doesn't scroll
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      };
+
+      el.addEventListener("wheel", onWheel, { passive: false });
+      el.addEventListener("touchstart", onTouchStart, { passive: true });
+      el.addEventListener("touchmove", onTouchMove, { passive: false });
+
+      return () => {
+        el.removeEventListener("wheel", onWheel);
+        el.removeEventListener("touchstart", onTouchStart);
+        el.removeEventListener("touchmove", onTouchMove);
+      };
     }, []);
 
     if (!pos?.visible) return null;
@@ -257,6 +305,7 @@ function Dashboard() {
             type="button"
             onClick={onClear}
             className="w-full px-4 py-2 text-left hover:bg-blue-50 transition-colors text-black"
+            style={{ color: "#000" }}
           >
             All Tags
           </button>
@@ -277,7 +326,7 @@ function Dashboard() {
           )}
         </div>
       </div>,
-      document.body
+      document.body,
     );
   }
 
@@ -503,7 +552,7 @@ function Dashboard() {
                       onClick={() => setShowTagDropdown(!showTagDropdown)}
                       className="w-full px-4 py-3 pr-10 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300 shadow-elevation-1 hover:shadow-elevation-2 bg-white text-left"
                     >
-                      <span className="text-black">
+                      <span className="text-black" style={{ color: "#000" }}>
                         {selectedTag
                           ? `#${selectedTag.replace(/^#/, "")}`
                           : "All Tags"}
@@ -678,8 +727,8 @@ function Dashboard() {
                   {sortBy === "updated"
                     ? "last updated"
                     : sortBy === "created"
-                    ? "date created"
-                    : "title"}
+                      ? "date created"
+                      : "title"}
                 </span>
               </div>
             </div>
