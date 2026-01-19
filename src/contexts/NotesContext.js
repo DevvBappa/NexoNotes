@@ -65,8 +65,6 @@ export const NotesProvider = ({ children }) => {
       };
 
       // Don't update local state - let the real-time listener handle it
-      // This prevents duplicates
-
       return newNote;
     } catch (error) {
       setError(error.message);

@@ -88,7 +88,10 @@ export default function LoginPage() {
         >
           {/* Error Message */}
           {(formError || error) && (
-            <div className="bg-red-500/20 border border-red-500/50 rounded-lg p-3" role="alert">
+            <div
+              className="bg-red-500/20 border border-red-500/50 rounded-lg p-3"
+              role="alert"
+            >
               <p className="text-red-700 text-sm">{formError || error}</p>
             </div>
           )}

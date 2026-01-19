@@ -238,6 +238,8 @@ function Dashboard() {
         const atBottom =
           Math.abs(el.scrollHeight - el.scrollTop - el.clientHeight) <= 1;
 
+        // If the dropdown can scroll in the direction of the touch, stop propagation
+        // If it's at the edge, prevent default to stop the page from scrolling.
         if ((delta < 0 && !atTop) || (delta > 0 && !atBottom)) {
           // Touch scrolling inside dropdown - prevent it from bubbling to parent
           e.stopPropagation();
@@ -287,7 +289,7 @@ function Dashboard() {
           role="listbox"
           aria-label="Tag suggestions"
         >
-          <div className="px-3 py-2 sticky top-0 bg-white border-b border-gray-100">
+          <div className="px-3 py-2 sticky top-0 bg-white border-b border-gray-100 text-gray-800">
             <input
               autoFocus
               type="text"
@@ -311,7 +313,7 @@ function Dashboard() {
           </button>
 
           {filteredTags.length === 0 ? (
-            <div className="px-4 py-2 text-sm text-gray-500">No tags found</div>
+            <div className="px-4 py-2 text-sm text-gray-800">No tags found</div>
           ) : (
             filteredTags.map((tag) => (
               <button

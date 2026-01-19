@@ -67,6 +67,34 @@ function NoteDetailPage() {
     { name: "Gray", value: "#E5E7EB" },
   ];
 
+  const normalizeTagsString = (str) => {
+    if (!str) return { cleanString: "", tags: [], invalid: [] };
+
+    const tokens = str.replace(/,/g, " ").trim().split(/\s+/);
+    const validRegex = /^#[A-Za-z0-9_]+$/;
+
+    const tags = [];
+    const invalid = [];
+
+    tokens.forEach((t) => {
+      if (!t) return;
+      let token = t.trim();
+      if (!token.startsWith("#")) token = `#${token}`;
+      token = token.replace(/[^#A-Za-z0-9_]/g, "");
+      if (token.length < 2) {
+        invalid.push(t);
+        return;
+      }
+      if (validRegex.test(token)) {
+        if (!tags.includes(token)) tags.push(token);
+      } else {
+        invalid.push(t);
+      }
+    });
+
+    return { cleanString: tags.join(" "), tags, invalid };
+  };
+
   // Fetch note from Firebase
   useEffect(() => {
     const fetchNote = async () => {
@@ -92,34 +120,6 @@ function NoteDetailPage() {
 
   const exportToPDF = async () => {
     if (!note) return;
-
-    const normalizeTagsString = (str) => {
-      if (!str) return { cleanString: "", tags: [], invalid: [] };
-
-      const tokens = str.replace(/,/g, " ").trim().split(/\s+/);
-      const validRegex = /^#[A-Za-z0-9_]+$/;
-
-      const tags = [];
-      const invalid = [];
-
-      tokens.forEach((t) => {
-        if (!t) return;
-        let token = t.trim();
-        if (!token.startsWith("#")) token = `#${token}`;
-        token = token.replace(/[^#A-Za-z0-9_]/g, "");
-        if (token.length < 2) {
-          invalid.push(t);
-          return;
-        }
-        if (validRegex.test(token)) {
-          if (!tags.includes(token)) tags.push(token);
-        } else {
-          invalid.push(t);
-        }
-      });
-
-      return { cleanString: tags.join(" "), tags, invalid };
-    };
 
     setIsExporting(true);
 
@@ -265,7 +265,7 @@ function NoteDetailPage() {
     setEditedTags(
       note.tags && note.tags.length > 0
         ? note.tags.map((tag) => `#${tag}`).join(" ")
-        : ""
+        : "",
     );
 
     // Set content in the editable div after state update
@@ -332,6 +332,369 @@ function NoteDetailPage() {
     }
     document.execCommand(command, false, value);
     updateActiveFormats();
+  };
+
+  // Image resize / insert utilities (ported from create page)
+  const createResizableImage = (imageSrc) => {
+    const wrapper = document.createElement("div");
+    wrapper.style.position = "relative";
+    wrapper.style.display = "inline-block";
+    wrapper.style.maxWidth = "100%";
+    wrapper.style.margin = "10px 0";
+    wrapper.style.border = "2px solid transparent";
+    wrapper.style.padding = "2px";
+    wrapper.className = "image-wrapper";
+    wrapper.contentEditable = "false";
+    wrapper.tabIndex = "0";
+
+    const img = document.createElement("img");
+    img.src = imageSrc;
+    img.style.width = "400px";
+    img.style.height = "auto";
+    img.style.borderRadius = "8px";
+    img.style.display = "block";
+    img.style.cursor = "move";
+    img.draggable = false;
+
+    const handles = ["nw", "ne", "sw", "se", "n", "s", "e", "w"];
+    const handleElements = {};
+
+    handles.forEach((position) => {
+      const handle = document.createElement("div");
+      handle.className = `resize-handle-${position}`;
+      handle.style.position = "absolute";
+      handle.style.background = "rgba(37, 99, 235, 0.9)";
+      handle.style.border = "2px solid white";
+      handle.style.display = "none";
+      handle.style.zIndex = "10";
+      handle.style.boxShadow = "0 2px 4px rgba(0,0,0,0.3)";
+      handle.style.transition = "all 0.2s ease";
+
+      if (position.includes("n")) handle.style.top = "-6px";
+      if (position.includes("s")) handle.style.bottom = "-6px";
+      if (position.includes("w")) handle.style.left = "-6px";
+      if (position.includes("e")) handle.style.right = "-6px";
+
+      if (position === "n" || position === "s") {
+        handle.style.width = "40px";
+        handle.style.height = "8px";
+        handle.style.left = "50%";
+        handle.style.transform = "translateX(-50%)";
+        handle.style.cursor = "ns-resize";
+        handle.style.borderRadius = "4px";
+      } else if (position === "e" || position === "w") {
+        handle.style.width = "8px";
+        handle.style.height = "40px";
+        handle.style.top = "50%";
+        handle.style.transform = "translateY(-50%)";
+        handle.style.cursor = "ew-resize";
+        handle.style.borderRadius = "4px";
+      } else {
+        handle.style.width = "14px";
+        handle.style.height = "14px";
+        handle.style.borderRadius = "50%";
+        handle.style.cursor = `${position}-resize`;
+      }
+
+      handle.addEventListener("mouseenter", () => {
+        handle.style.transform =
+          position === "n" || position === "s"
+            ? "translateX(-50%) scale(1.2)"
+            : position === "e" || position === "w"
+              ? "translateY(-50%) scale(1.2)"
+              : "scale(1.3)";
+        handle.style.background = "rgba(37, 99, 235, 1)";
+      });
+
+      handle.addEventListener("mouseleave", () => {
+        if (!wrapper.dataset.resizing) {
+          handle.style.transform =
+            position === "n" || position === "s"
+              ? "translateX(-50%)"
+              : position === "e" || position === "w"
+                ? "translateY(-50%)"
+                : "";
+          handle.style.background = "rgba(37, 99, 235, 0.9)";
+        }
+      });
+
+      handleElements[position] = handle;
+      wrapper.appendChild(handle);
+    });
+
+    wrapper.addEventListener("mouseenter", () => {
+      wrapper.style.border = "2px solid rgba(37, 99, 235, 0.5)";
+      Object.values(handleElements).forEach((h) => (h.style.display = "block"));
+    });
+
+    wrapper.addEventListener("mouseleave", () => {
+      if (!wrapper.dataset.resizing) {
+        wrapper.style.border = "2px solid transparent";
+        Object.values(handleElements).forEach(
+          (h) => (h.style.display = "none"),
+        );
+      }
+    });
+
+    Object.entries(handleElements).forEach(([position, handle]) => {
+      handle.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        wrapper.dataset.resizing = "true";
+
+        const startX = e.clientX;
+        const startY = e.clientY;
+        const startWidth = img.offsetWidth;
+        const startHeight = img.offsetHeight;
+        const aspectRatio = startWidth / startHeight;
+
+        const onMouseMove = (e) => {
+          let newWidth = startWidth;
+          let newHeight = startHeight;
+
+          if (position.includes("e")) {
+            newWidth = startWidth + (e.clientX - startX);
+          } else if (position.includes("w")) {
+            newWidth = startWidth - (e.clientX - startX);
+          }
+
+          if (position.includes("s")) {
+            newHeight = startHeight + (e.clientY - startY);
+          } else if (position.includes("n")) {
+            newHeight = startHeight - (e.clientY - startY);
+          }
+
+          if (position.length === 2) {
+            if (Math.abs(e.clientX - startX) > Math.abs(e.clientY - startY)) {
+              newHeight = newWidth / aspectRatio;
+            } else {
+              newWidth = newHeight * aspectRatio;
+            }
+          } else if (position === "e" || position === "w") {
+            newHeight = newWidth / aspectRatio;
+          } else if (position === "n" || position === "s") {
+            newWidth = newHeight * aspectRatio;
+          }
+
+          if (
+            newWidth >= 100 &&
+            contentEditRef.current &&
+            newWidth <= contentEditRef.current.offsetWidth - 20
+          ) {
+            img.style.width = newWidth + "px";
+            img.style.height = "auto";
+          }
+        };
+
+        const onMouseUp = () => {
+          delete wrapper.dataset.resizing;
+          wrapper.style.border = "2px solid transparent";
+          Object.values(handleElements).forEach(
+            (h) => (h.style.display = "none"),
+          );
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+        };
+
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+      });
+    });
+
+    // Drag-to-reposition (simplified: same behavior as create page)
+    let isDragging = false;
+    let dragStartX, dragStartY;
+    let dragThreshold = 5;
+    let dropIndicator = null;
+
+    img.addEventListener("mousedown", (e) => {
+      if (e.target.classList.contains("resize-handle")) return;
+
+      e.preventDefault();
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+
+      const onMouseMove = (moveEvent) => {
+        const deltaX = Math.abs(moveEvent.clientX - dragStartX);
+        const deltaY = Math.abs(moveEvent.clientY - dragStartY);
+
+        if (!isDragging && (deltaX > dragThreshold || deltaY > dragThreshold)) {
+          isDragging = true;
+          wrapper.style.opacity = "0.5";
+          wrapper.style.cursor = "grabbing";
+          wrapper.style.pointerEvents = "none";
+
+          dropIndicator = document.createElement("span");
+          dropIndicator.style.position = "absolute";
+          dropIndicator.style.width = "2px";
+          dropIndicator.style.height = "20px";
+          dropIndicator.style.backgroundColor = "rgba(37, 99, 235, 0.9)";
+          dropIndicator.style.boxShadow = "0 0 8px rgba(37, 99, 235, 0.5)";
+          dropIndicator.style.pointerEvents = "none";
+          dropIndicator.style.zIndex = "1000";
+          document.body.appendChild(dropIndicator);
+        }
+
+        if (isDragging && contentEditRef.current && dropIndicator) {
+          dropIndicator.style.left = moveEvent.clientX + "px";
+          dropIndicator.style.top = moveEvent.clientY + "px";
+        }
+      };
+
+      const onMouseUp = (upEvent) => {
+        if (isDragging && contentEditRef.current) {
+          let range;
+          if (document.caretRangeFromPoint) {
+            range = document.caretRangeFromPoint(
+              upEvent.clientX,
+              upEvent.clientY,
+            );
+          } else if (document.caretPositionFromPoint) {
+            const position = document.caretPositionFromPoint(
+              upEvent.clientX,
+              upEvent.clientY,
+            );
+            if (position) {
+              range = document.createRange();
+              range.setStart(position.offsetNode, position.offset);
+              range.collapse(true);
+            }
+          }
+
+          if (range) {
+            const parent = wrapper.parentNode;
+            if (parent) wrapper.remove();
+            try {
+              range.insertNode(wrapper);
+              if (
+                !wrapper.nextSibling ||
+                wrapper.nextSibling.nodeType !== Node.TEXT_NODE
+              ) {
+                const space = document.createTextNode("\u00A0");
+                wrapper.parentNode.insertBefore(space, wrapper.nextSibling);
+              }
+            } catch (error) {
+              contentEditRef.current.appendChild(wrapper);
+            }
+          }
+        }
+
+        if (dropIndicator && dropIndicator.parentNode) dropIndicator.remove();
+        wrapper.style.opacity = "1";
+        wrapper.style.cursor = "";
+        wrapper.style.pointerEvents = "";
+        isDragging = false;
+        dropIndicator = null;
+
+        document.removeEventListener("mousemove", onMouseMove);
+        document.removeEventListener("mouseup", onMouseUp);
+      };
+
+      document.addEventListener("mousemove", onMouseMove);
+      document.addEventListener("mouseup", onMouseUp);
+    });
+
+    img.style.cursor = "grab";
+
+    wrapper.addEventListener("click", (e) => {
+      e.stopPropagation();
+      wrapper.focus();
+      wrapper.style.border = "2px solid rgba(37, 99, 235, 0.8)";
+      wrapper.style.outline = "none";
+    });
+
+    wrapper.addEventListener("focus", () => {
+      wrapper.style.border = "2px solid rgba(37, 99, 235, 0.8)";
+      Object.values(handleElements).forEach((h) => (h.style.display = "block"));
+    });
+
+    wrapper.addEventListener("blur", () => {
+      if (!wrapper.dataset.resizing) {
+        wrapper.style.border = "2px solid transparent";
+        Object.values(handleElements).forEach(
+          (h) => (h.style.display = "none"),
+        );
+      }
+    });
+
+    wrapper.addEventListener("keydown", (e) => {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        e.stopPropagation();
+        wrapper.remove();
+      }
+    });
+
+    wrapper.appendChild(img);
+    return wrapper;
+  };
+
+  const insertImageIntoEditor = (imageSrc) => {
+    if (!contentEditRef.current) return;
+
+    const wrapper = createResizableImage(imageSrc);
+
+    contentEditRef.current.focus();
+    const selection = window.getSelection();
+    if (selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      range.deleteContents();
+      range.insertNode(wrapper);
+
+      const br = document.createElement("br");
+      wrapper.parentNode.insertBefore(br, wrapper.nextSibling);
+    }
+  };
+
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith("image/")) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            insertImageIntoEditor(event.target.result);
+          };
+          reader.readAsDataURL(file);
+        }
+        break;
+      }
+    }
+  };
+
+  const handleEditorDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (contentEditRef.current)
+      contentEditRef.current.style.borderColor = "rgba(37, 99, 235, 0.5)";
+  };
+
+  const handleEditorDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (contentEditRef.current) contentEditRef.current.style.borderColor = "";
+  };
+
+  const handleEditorDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (contentEditRef.current) contentEditRef.current.style.borderColor = "";
+
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          insertImageIntoEditor(event.target.result);
+        };
+        reader.readAsDataURL(file);
+      }
+    }
   };
 
   const updateActiveFormats = () => {
@@ -437,30 +800,33 @@ function NoteDetailPage() {
 
   const handleImageInsert = (e) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || !file.type.startsWith("image/")) return;
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      const img = document.createElement("img");
-      img.src = event.target.result;
-      img.style.maxWidth = "100%";
-      img.style.height = "auto";
-      img.style.display = "block";
-      img.style.margin = "10px 0";
-
-      if (contentEditRef.current) {
-        contentEditRef.current.focus();
-        const selection = window.getSelection();
-        if (selection.rangeCount > 0) {
-          const range = selection.getRangeAt(0);
-          range.insertNode(img);
-          range.collapse(false);
-        }
-      }
+      insertImageIntoEditor(event.target.result);
     };
     reader.readAsDataURL(file);
     e.target.value = "";
   };
+
+  // Attach paste / drag & drop handlers when editing
+  useEffect(() => {
+    if (!isEditing || !contentEditRef.current) return;
+
+    const el = contentEditRef.current;
+    el.addEventListener("paste", handlePaste);
+    el.addEventListener("dragover", handleEditorDragOver);
+    el.addEventListener("dragleave", handleEditorDragLeave);
+    el.addEventListener("drop", handleEditorDrop);
+
+    return () => {
+      el.removeEventListener("paste", handlePaste);
+      el.removeEventListener("dragover", handleEditorDragOver);
+      el.removeEventListener("dragleave", handleEditorDragLeave);
+      el.removeEventListener("drop", handleEditorDrop);
+    };
+  }, [isEditing]);
 
   const formatDate = (dateString) => {
     if (!dateString) return "No date";
@@ -745,7 +1111,7 @@ function NoteDetailPage() {
                       setEditedTagError(
                         invalid.length
                           ? `Invalid tags: ${invalid.join(", ")}`
-                          : ""
+                          : "",
                       );
                     }}
                     onBlur={(e) => {
@@ -756,7 +1122,7 @@ function NoteDetailPage() {
                       setEditedTagError(
                         invalid.length
                           ? `Invalid tags: ${invalid.join(", ")}`
-                          : ""
+                          : "",
                       );
                     }}
                     placeholder="#work #personal #important (separate with spaces)"
@@ -1225,11 +1591,11 @@ function NoteDetailPage() {
                           window.open(
                             attachment.downloadURL,
                             "_blank",
-                            "noopener,noreferrer"
+                            "noopener,noreferrer",
                           );
                         else
                           alert(
-                            "No file URL — this attachment was created before uploads were saved. Edit the note to reattach the file."
+                            "No file URL — this attachment was created before uploads were saved. Edit the note to reattach the file.",
                           );
                       }
                     }}
@@ -1238,11 +1604,11 @@ function NoteDetailPage() {
                         window.open(
                           attachment.downloadURL,
                           "_blank",
-                          "noopener,noreferrer"
+                          "noopener,noreferrer",
                         );
                       } else {
                         alert(
-                          "No file URL — this attachment was created before uploads were saved. Edit the note to reattach the file."
+                          "No file URL — this attachment was created before uploads were saved. Edit the note to reattach the file.",
                         );
                       }
                     }}
@@ -1327,8 +1693,8 @@ function NoteDetailPage() {
                 ))}
               </div>
               <p className="mt-3 text-xs text-gray-500 italic">
-                Attachments are stored in Firebase Storage. Click &quot;Open&quot; to view
-                or download a file.
+                Attachments are stored in Firebase Storage. Click
+                &quot;Open&quot; to view or download a file.
               </p>
             </div>
           )}
